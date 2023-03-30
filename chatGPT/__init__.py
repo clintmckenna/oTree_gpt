@@ -136,6 +136,9 @@ def runGPT(inputMessage):
 
 
 # PAGES
+class intro(Page):
+    pass
+
 class chat(Page):
     form_model = 'player'
     form_fields = ['chatLog']
@@ -179,5 +182,6 @@ class chat(Page):
         }
 
 page_sequence = [
+    intro,
     chat,
 ]
