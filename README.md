@@ -7,7 +7,7 @@ You can use the system prompt to adjust the tendencies of the personality you wa
 
 ![embedded](https://clintmckenna.com/img/2023/2023-03-29/prompt_texas.png)
 
-And what this looks like when chatting:
+And this looks like the following when chatting:
 
 ![embedded](https://clintmckenna.com/img/2023/2023-03-29/texas.png)
 
@@ -21,14 +21,14 @@ To use this, you will need to acquire a key from [OpenAI's API](https://openai.c
 ---
 
 ## OpenAI package requirements
-When using locally, you will also need to install openai's Python package. Be sure to add this to your requrements.txt file before using online.
+When using locally, you will also need to install OpenAI's Python package. Be sure to add this to your requrements.txt file before using online.
 
 ---
 > <i>openai==0.27.0</i>
 ---
 
 ## Model Parameters
-Currently, I have this set up to use gpt-3.5-turbo. Youn can adjust this model and the temperature in the \__init__.py file:
+Currently, I have this set up to use gpt-3.5-turbo. You can adjust this model and the temperature in the \__init__.py file:
 
 ![embedded](https://clintmckenna.com/img/2023/2023-03-29/constants.png)
 
