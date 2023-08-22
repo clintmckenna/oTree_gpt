@@ -172,7 +172,7 @@ class chat(Page):
             # write appended messages to database
             player.msg = json.dumps(messages)
 
-            return {0: output}  
+            return {player.id_in_group: output}  
         else: 
             pass
 
