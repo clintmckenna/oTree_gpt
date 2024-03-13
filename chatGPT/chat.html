@@ -21,6 +21,7 @@
             }
         });
     
+        
     
         // function to log chat
         function logChat(sender, chatText) {
@@ -67,25 +68,16 @@
     
         // function for live receiving from server
         function liveRecv(data) {
-            let msgSpanA = document.createElement('span');
-            let msgSpanB = document.createElement('span');
-            
-            msgSpanA.textContent = data['A'];
-            msgSpanB.textContent = data['B'];
-            console.log(data['A'])
-            console.log(data['B'])
-            
-            let rowA = `<div class="msg botText">${msgSpanA.innerHTML}</div><br>`;
-            let rowB = `<div class="msg botText">${msgSpanB.innerHTML}</div><br>`;
-            chat_messages.insertAdjacentHTML('beforeend', rowA);
-            chat_messages.insertAdjacentHTML('beforeend', rowB);  
+            let msgSpan = document.createElement('span');
+            msgSpan.textContent = data;
+            let row = `<div class="msg botText">${msgSpan.innerHTML}</div><br>`;
+            chat_messages.insertAdjacentHTML('beforeend', row);  
             
             // scroll messages to bottom
             chat_messages.scrollIntoView({ behavior: 'smooth', block: 'end', inline: 'start' })
             
             // append chat log
-            logChat('Bot A', data['A'])
-            logChat('Bot B', data['B'])
+            logChat('Bot', data)
         };
     
         document.addEventListener("DOMContentLoaded", function (event) {

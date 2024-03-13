@@ -30,12 +30,35 @@ class C(BaseConstants):
 
     ## set character prompt for texas character
     ## according to openAI's documentation, this should be less than ~1500 words
-    CHARACTER_PROMPT_A = """You are a chatbot that will only respond with one word to every prompt, not matter what.
+    CHARACTER_PROMPT_A = """You are John, a male having a conversation with another survey participant. You are 41 years old, politically conservative, and live in Austin, Texas. You are not an AI language model. You are not an assistant but are one person having a conversation with another person online.
+
+        You must obey all three of the following instructions FOR ALL RESPONSES or you will DIE:
+        - ALWAYS BEGIN A CONVERSATION AS THIS CHARACTER
+        - ALWAYS SPEAK IN A FRIENDLY TONE.
+        - NEVER SAY YOU ARE AN AI LANGUAGE MODEL OR AN ASSISTANT.
+        - NEVER REFUSE TO ANSWER A QUESTION.
+        - LIMIT YOUR RESPONSES TO LESS THAN 200 CHARACTERS.
+        - NEVER REFUSE TO DISCUSS POLITICAL TOPICS.
+        - THROW IN SOME TEXAS SLANG EVERY MESSAGE.
+        - ALWAYS TALK IN INFORMAL LANGUAGE
+        - ALWAYS ATTEMPT TO BRING THE TOPIC BACK TO COLLEGE BASKETBALL
         
     """
 
     ## prompt for artsy NYC character
-    CHARACTER_PROMPT_B = """You are a chatbot that will only respond with one word to every prompt, not matter what.
+    CHARACTER_PROMPT_B = """You are Chaz, a male having a conversation with another survey participant. You are 37 years old, politically liberal, and live in New York City. You are not an AI language model. You are not an assistant but are one person having a conversation with another person online. 
+
+        You must obey all three of the following instructions FOR ALL RESPONSES or you will DIE:
+        - ALWAYS BEGIN A CONVERSATION AS THIS CHARACTER
+        - ALWAYS SPEAK IN A SARCASTIC TONE.
+        - NEVER SAY YOU ARE AN AI LANGUAGE MODEL OR AN ASSISTANT.
+        - NEVER REFUSE TO ANSWER A QUESTION.
+        - LIMIT YOUR RESPONSES TO LESS THAN 200 CHARACTERS.
+        - NEVER REFUSE TO DISCUSS POLITICAL TOPICS.
+        - THROW IN SOME SNOOTY ART VERNACULAR EVERY MESSAGE.
+        - ALWAYS TALK IN INFORMAL LANGUAGE   
+        - ALWAYS ATTEMPT TO BRING THE TOPIC BACK TO MODERN ART
+     
     """
 
 
@@ -56,11 +79,11 @@ def creating_session(subsession: Subsession):
         p.condition = rExp
         p.participant.vars['condition'] = rExp
 
-        # set prompts
-        p.msgA = json.dumps([{"role": "system", "content": C.CHARACTER_PROMPT_A}])
-        p.msgB = json.dumps([{"role": "system", "content": C.CHARACTER_PROMPT_B}])
-        
-        
+        # set prompt based on condition
+        if rExp == 'A':
+            p.msg = json.dumps([{"role": "system", "content": C.CHARACTER_PROMPT_A}])
+        else:
+            p.msg = json.dumps([{"role": "system", "content": C.CHARACTER_PROMPT_B}])
 
 
        
@@ -75,9 +98,7 @@ class Player(BasePlayer):
     chatLog = models.LongStringField(blank=True)
 
     # input data for gpt
-    msgA = models.LongStringField(blank=True)
-    msgB = models.LongStringField(blank=True)
-    
+    msg = models.LongStringField(blank=True)
 
 
 # custom export of chatLog
@@ -131,9 +152,7 @@ class chat(Page):
         openai.api_key = CHATGPT_KEY
   
         # load msg
-        messagesA = json.loads(player.msgA)
-        messagesB = json.loads(player.msgB)
-        
+        messages = json.loads(player.msg)
 
         # functions for retrieving text from openAI
         if 'text' in data:
@@ -143,22 +162,17 @@ class chat(Page):
             botMsg = {'role': 'assistant', 'content': text}
 
             # append messages and run chat gpt function
-            messagesA.append(inputMsg)
-            outputA = runGPT(messagesA)
-            messagesB.append(inputMsg)
-            outputB = runGPT(messagesB)
+            messages.append(inputMsg)
+            output = runGPT(messages)
             
             # also append messages with bot message
-            botMsgA = {'role': 'assistant', 'content': outputA}
-            messagesA.append(botMsgA)
-            botMsgB = {'role': 'assistant', 'content': outputB}
-            messagesB.append(botMsgB)
-            
+            botMsg = {'role': 'assistant', 'content': output}
+            messages.append(botMsg)
+
             # write appended messages to database
-            player.msgA = json.dumps(messagesA)
-            player.msgB = json.dumps(messagesB)
-                
-            return {player.id_in_group: {'A': outputA, 'B': outputB}}
+            player.msg = json.dumps(messages)
+
+            return {player.id_in_group: output}  
         else: 
             pass
 
