@@ -13,8 +13,8 @@
 
   /* body */
   .otree-body {
-    max-width: 1200px; /* or 950px */
-    min-width: 1000px;
+    max-width: 1000px;
+    /* min-width: 1000px; */
     font-family: 'Roboto', sans-serif;
     font-size: 24px;
     /* overflow-x: scroll; */
@@ -51,32 +51,33 @@
   /* general text box */
   .textBox {
     background: white;
-    border-color: lightgrey;
-    border-style: solid;
-    padding: 30px;
-    height: 60vh;
+    /* border-color: lightgrey;
+    border-style: solid; */
+    border: 2px solid lightgrey;
+    border-radius: 0.5rem;
+    padding: 1rem;
+    height: 50vh;
     position:relative; 
     overflow:auto;  
   }
 
   .chat_messages {
-    height: 70%;
+    padding: 0.5rem;
+    border-radius: 1rem;
+    margin-bottom: 0.5rem;
+    max-width: 80%; 
   }
 
   .inputBox {
-    height: 10vh;
-    position:relative;
-    border-color: red;
+    display: flex;
+    align-items: center;
+    margin-top: 1rem;
   }
 
   .typeInputBox {
-    display: inline-block;
-    position: absolute;
-    right: 0;
-    bottom:0;
-    margin-bottom: 5px;
-    padding: 10px 10px 10px 12px;
-    max-width: 80%;
+    flex: 1;
+    display: flex;
+    align-items: center;
   }
  
 
@@ -112,6 +113,14 @@
 
   /* -------------------- button styles -------------------- */ 
 
+  input[type="text"] {
+    flex: 1;
+    padding: 0.5rem;
+    border: 2px solid lightgrey;
+    border-radius: 0.5rem;
+    margin-right: 0.5rem;
+  }
+
   input[type=button] {
     background-color: #38A1F3;
     border: none;
@@ -123,9 +132,11 @@
     cursor: pointer;
   }
 
-  button[type=button] {
+  button[type="button"] {
     background-color: lightgrey;
-    text-decoration: none;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 0.5rem;
     cursor: pointer;
   }
  

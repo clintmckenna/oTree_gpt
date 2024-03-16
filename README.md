@@ -28,7 +28,7 @@ When using locally, you will also need to install openai's Python package. Be su
 ---
 
 ## Model Parameters
-Currently, I have this set up to use gpt-3.5-turbo. Youn can adjust this model and the temperature in the \__init__.py file:
+Currently, I have this set up to use gpt-3.5-turbo. You can adjust this model and the temperature in the \__init__.py file:
 
 ![embedded](https://clintmckenna.com/img/2023/2023-03-29/constants.png)
 
@@ -42,3 +42,6 @@ As part of oTree's [installation agreement](https://otree.readthedocs.io/en/mast
 - Chen, D.L., Schonger, M., Wickens, C., 2016. oTree - An open-source platform for laboratory, online and field experiments. Journal of Behavioral and Experimental Finance, vol 9: 88-97.
 
 If this app was helpful, you may consider citing this github repository as well.
+
+- McKenna, C., (2013). oTree GPT. https://github.com/clintmckenna/oTree_gpt
+
