@@ -43,5 +43,5 @@ As part of oTree's [installation agreement](https://otree.readthedocs.io/en/mast
 
 If this app was helpful, you may consider citing this github repository as well.
 
-- McKenna, C., (2013). oTree GPT. https://github.com/clintmckenna/oTree_gpt
+- McKenna, C. (2013). oTree GPT. https://github.com/clintmckenna/oTree_gpt
 
