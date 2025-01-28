@@ -1,0 +1,147 @@
+{{ extends "chat_simple/Page.html" }}
+
+{{ block title }}
+{{ endblock }}
+
+{{ block styles }}
+{{ endblock }}
+
+{{ block scripts }}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Prevent form submission when pressing enter or clicking buttons
+        const form = document.querySelector('form');
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+        });
+        
+        // delay chat input focus
+        setTimeout(() => {
+            const chatInput = document.getElementById('chatinput');
+            chatInput.focus();
+        }, 100);
+
+        // start listening for live page functions
+        liveSend({});
+    });
+
+    // run sendMsg when enter key is pressed
+    var chatInput = document.getElementById('chatinput');    
+    chatInput.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter') {
+            sendMsg();
+        }
+    });
+
+    // send user message to server
+    function sendMsg() {
+        const text = chatInput.value.trim();
+        if (text) {
+            liveSend({'text': text});
+            // clear the input field
+            chatInput.value = '';
+        }
+    }
+
+    // function for live receiving from server
+    function liveRecv(data) {
+        // grab data from server
+        const messageId = data.msgId;
+        const selfText = data.selfText;
+        const botText = data.botText;
+        const botClass = data.botClass;
+
+        // get chat elements
+        const chatInput = document.getElementById('chatinput');
+        const chatMessages = document.getElementById('chatMessages');
+
+        // create message html from subject input and insert into chatMessages
+        let messageHtml = `
+            <div class="message selfMsg" id="${messageId}">
+                <strong>You<br></strong> ${selfText}
+                <div class="message-reactions"></div>
+            </div>
+        `;
+        chatMessages.insertAdjacentHTML('beforeend', messageHtml);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+
+        // Add typing indicator for bot and insert into chatMessages
+        const typingId = 'typing-' + Date.now();
+        let typingHtml = `
+            <div class="message botMsg typing ${botClass}" id="${typingId}">
+                <div class="typing-indicator">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+            </div>
+        `;
+        chatMessages.insertAdjacentHTML('beforeend', typingHtml);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+
+        // Add bot response after a 2 seconds delay
+        setTimeout(() => {
+            // remove typing indicator
+            const typingIndicator = document.getElementById(typingId);
+            if (typingIndicator) {
+                typingIndicator.remove();
+            }
+
+            // replace with bot response
+            let botHtml = `
+                <div class="message botMsg ${botClass}" id="${messageId}-response">
+                    <strong>Bot<br></strong> ${botText}
+                    <div class="message-reactions"></div>
+                </div>
+            `;
+            chatMessages.insertAdjacentHTML('beforeend', botHtml);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }, 2000);
+    }
+</script>
+{{ endblock }}
+
+{{ block content }}
+<div class='container card mb-3'>
+    <div class='row no-gutters'>
+        <div class='infoBox col-md-4 d-flex align-items-center justify-content-center' style='font-size:22px; height: 100%; min-height: 300px;'>
+            <span class='timer'>
+                Page will auto-advance in:
+                <span class='otree-timer__time-left'></span>
+            </span>
+            <br>
+
+            {{ if botParty == 'Republican'}}
+                Your chat bot's political party is <span class='redSpan'>{{ botParty }}.</span>
+            {{ elif botParty == 'Democrat' }}
+                Your chat bot's political party is <span class='blueSpan'>{{ botParty }}.</span>
+            {{ else }}    
+                Your chat bot's political party is <span class='miscSpan'>{{ botParty }}.</span>
+            {{ endif }}
+
+            <br>
+            <b>Prompt:</b> <i>What, if anything, do you think can be done to reduce gun violence?</i>
+        </div>
+
+        <div class='chatPanel col-md-8' id='chatPanel'>
+            <div class='chatHeader'>
+                Bot Chat
+            </div>
+            <div id='chatMessages' class='chatMessages'>
+                <div class='message sysMsg'>
+                    <strong>System<br></strong>
+                    Please send a message to begin the conversation.
+                </div>
+            </div>
+        
+            <div class='inputBox'>
+                <div class='typeInputBox'>
+                    <input type='text' id='chatinput' style='text-align:right;' maxlength='80'>
+                    <button type='button' onclick='sendMsg()'>Send</button>
+                </div>
+            </div> 
+        </div>
+    </div>
+</div>
+
+{{ endblock }}

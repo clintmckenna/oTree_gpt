@@ -3,8 +3,18 @@ from os import environ
 
 SESSION_CONFIGS = [
      dict(
-         name='chatGPT',
-         app_sequence=['chatGPT',],
+         name='chat_simple',
+         app_sequence=['chat_simple',],
+         num_demo_participants=1,
+     ),
+     dict(
+         name='chat_complex',
+         app_sequence=['chat_complex',],
+         num_demo_participants=1,
+     ),
+     dict(
+         name='chat_voice',
+         app_sequence=['chat_voice',],
          num_demo_participants=1,
      ),
 ]

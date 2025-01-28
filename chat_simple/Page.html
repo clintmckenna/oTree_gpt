@@ -1,0 +1,347 @@
+{{ extends "global/Page.html" }}
+{{ load static otree }}
+
+{{ block app_styles }}
+
+
+<!-- load cutom font ----------------------------------------->
+<link href='https://fonts.googleapis.com/css?family=Roboto:400,100,100italic,300,300italic,400italic,500,500italic,700,700italic,900italic,900' rel='stylesheet' type='text/css'>
+
+
+<style>  
+
+    /* -------------------------------------------------------- */
+    /* global oTree styles                                      */ 
+    /* -------------------------------------------------------- */
+
+    /* body */
+    .otree-body {
+        /* max-width: 1200px; */
+        /* min-width: 1000px; */
+        /* font-family: 'Roboto', sans-serif; */
+        font-size: 18px;
+        /* overflow-x: scroll; */
+        overflow: hidden;
+    }
+
+    /* title */
+    /* .otree-title { */
+        /* text-align: center;  */
+    /* } */
+
+    /* wait page (entire dialogue) */
+    /* .otree-wait-page {} */
+
+    /* wait page (dialogue title) */
+    /* .otree-wait-page__title {} */
+
+    /* wait page (dialogue body) */
+    /* .otree-wait-page__body {} */
+
+    /* timer */
+    /* using a custom timer instead of the default oTree one */
+    .otree-timer {
+        display: none;
+    }
+
+    /* next button */
+    /* .otree-btn-next {} */
+
+    /* form errors alert */
+    /* .otree-form-errors {} */
+
+
+    
+    /* -------------------------------------------------------- */
+    /* timer styles                                             */ 
+    /* -------------------------------------------------------- */
+
+    /* Responsive timer with custom styling */
+    .timer {
+        margin-bottom: 10px;
+        align-self:center;
+        margin-top: auto;
+        color:#6874E8;
+        font-weight: bold;
+        text-align: center;
+        font-size: 20px;
+        font-weight: 700;
+    }
+
+    /* -------------------------------------------------------- */
+    /* div container styles                                     */ 
+    /* -------------------------------------------------------- */
+
+    /* main container with all the elements */
+    .container {
+        max-width: 1200px;
+    }
+
+    /* info panel with instructions and timer*/
+    .infoBox {
+        height: 500px;
+        text-align: center;
+        padding: 15px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+
+    }
+
+    /* chat panel contaning messages and user input */
+    .chatPanel {
+        display: flex;
+        flex-direction: column;
+        width: 500px;
+        height: 500px;
+        margin: 5px auto;
+        padding: 0;
+    }
+
+    /* chat header */
+    .chatHeader {
+        background: #343434;
+        color: white;
+        padding: 10px;
+        border-radius: 8px 8px 0 0;   
+    }
+
+    /* chat messages div */
+    .chatMessages {
+        background: white;
+        border: 1px solid #ccc;
+        border-radius: 0 0 8px 8px;
+        padding: 1rem;
+        padding-right: calc(1vw);
+        overflow-x: hidden;
+        overflow-y:auto;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        scrollbar-gutter: stable;   
+    }
+
+    /* div for individual messages */
+    .message {
+        background: #eeeeee;
+        position: relative;
+        text-align: right;
+        margin-bottom: 10px;
+        padding: 10px 10px 10px 12px;
+        border-radius: 20px;
+        max-width: 80%;
+        word-wrap: break-word;
+        align-self: flex-end;
+        display: block;
+        width: fit-content;
+        transition:  0.2s ease-in;
+        cursor: pointer;
+    }
+
+
+    /* -------------------------------------------------------- */
+    /* msg div styles                                           */
+    /* -------------------------------------------------------- */ 
+
+    /* system message */
+    .sysMsg {
+        background-color: #204a79;
+        color: #e4e4e4;
+        text-align: left;
+        align-self: flex-start;   
+    }
+
+    /* bot message */
+    .botMsg {
+        color: #e4e4e4;
+        text-align: left;
+        align-self: flex-start;
+    }
+
+    /* user message */
+    .selfMsg {
+        color: #000;
+        text-align: right;
+        align-self: flex-end;
+    }
+
+    /* fallback styling for uncategorized messages */
+    .otherMsg {
+        background-color: #38A1F3;
+        text-align: left;
+        color: #fff;
+        align-self: flex-start;
+    }
+
+
+    /* -------------------------------------------------------- */
+    /* text span styles                                         */
+    /* -------------------------------------------------------- */
+
+    /* red text for Republican bot */
+    .redText {
+        background-color: #F94D56;
+        color: #fff;
+    }
+    .redSpan {
+        color: #F94D56;
+        font-weight: 800;
+    }
+
+    /* blue text for Democrat bot */
+    .blueText {
+        background-color: #38A1F3;
+        color: #fff;
+    }
+    .blueSpan {
+    color: #38A1F3;
+    font-weight: 800;
+    }
+
+    /* fallback styling for uncategorized text */
+    .miscText {
+        background-color: #707070;
+        color: #fff;
+    }
+    .miscSpan {
+        color: #707070;
+        font-weight: 800;
+    }
+
+    /* for the used colors, we will use white text for all agents */
+    .botText {
+        color: white;
+        left: 0;
+        display: inline-block;
+        margin-bottom: 5px;
+        padding: 10px 10px 10px 12px;
+        border-radius: 20px;
+        max-width: 80%;
+        height: 100%;
+    }
+
+
+    /* -------------------------------------------------------- */
+    /* bot typing indicator                                     */
+    /* -------------------------------------------------------- */ 
+
+    /* typing indicator div, styling, animation */
+    .typing-indicator {
+        display: flex;
+        gap: 4px;
+        padding: 4px 8px;
+    }
+
+    .typing-indicator span {
+        width: 8px;
+        height: 8px;
+        background-color: #fff;
+        border-radius: 50%;
+        animation: typing 1s infinite ease-in-out;
+    }
+
+    .typing-indicator span:nth-child(1) {
+        animation-delay: 0.2s;
+    }
+
+    .typing-indicator span:nth-child(2) {
+        animation-delay: 0.3s;
+    }
+
+    .typing-indicator span:nth-child(3) {
+        animation-delay: 0.4s;
+    }
+
+    @keyframes typing {
+        0%, 100% {
+            transform: translateY(0);
+        }
+        50% {
+            transform: translateY(-5px);
+        }
+    }
+
+    .typing {
+        max-width: 60px;
+        padding: 8px;
+    }
+
+
+    /* -------------------------------------------------------- */
+    /* user input and message styles                            */
+    /* -------------------------------------------------------- */
+
+    /* input box div containing subelements*/
+    .inputBox {
+        display: flex;
+        align-items: center;
+        margin-top: 1rem;    
+    }
+
+    /* input box styling */
+    .typeInputBox {
+        flex: 1;
+        display: flex;
+        align-items: center;
+    }
+
+    /* user message styling */
+    .selfText {
+        background: lightgray;
+        display: inline-block;
+        position: relative;
+        left: 100%;
+        transform: translateX(-100%);
+        text-align: right;
+        margin-bottom: 5px;
+        padding: 10px 10px 10px 12px;
+        border-radius: 20px;
+        max-width: 80%;
+        height: 100%;
+    }
+
+    /* input form styling */
+    input[type="text"] {
+        flex: 1;
+        padding: 0.5rem;
+        border: 2px solid lightgrey;
+        border-radius: 0.5rem;
+        margin-right: 0.5rem;
+    }
+
+    /* input button styling */
+    input[type=button] {
+        background-color: #38A1F3;
+        border: none;
+        color: white;
+        font-size: 18px;
+        padding: 5px 12px;
+        text-decoration: none;
+        margin: 4px 2px;
+        cursor: pointer;
+    }
+    button[type="button"] {
+        background-color: lightgrey;
+        border: none;
+        padding: 0.5rem 1rem;
+        border-radius: 0.5rem;
+        cursor: pointer;
+    }
+    
+    /* styling for scrollbar */
+    .chatMessages::-webkit-scrollbar {
+        width: 1vw;
+    }    
+    .chatMessages::-webkit-scrollbar-thumb {
+        background: #9e9e9e;    
+        border-radius: 2vw;
+    }
+
+    .chatMessages::-webkit-scrollbar-track {
+        background: #ddd;
+        border-radius: 0 0 2vw 2vw;
+    }
+
+</style>
+
+{{ endblock }}
