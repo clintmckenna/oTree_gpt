@@ -7,7 +7,7 @@ I am continuously working on adding more templates. Here is the current list:
 - [chat_complex](#chat_complex)
 - [chat_voice](#chat_voice)
 
-### chat_simple
+## chat_simple
 
 This is a simple version of a chat task with a randomized LLM agent. The agent will be on of two personalities: Republican or Democrat. It also demonstrates how you can use randomized conditions to adjust things like CSS styles.
 
@@ -16,23 +16,26 @@ This is a simple version of a chat task with a randomized LLM agent. The agent w
 
 This app is useful if you only care about the text that is sent to and from the LLM agent and will not use more complex features.
 
-### chat_complex
+## chat_complex
 
 This is a similar application that demonstrates how one can use sturctured output with the LLM response. This uses pydantic to validate the json schema for whatever variables you want passed to the LLM agent:
+
 ![til](./_static/schema.png)
 
 In this case, you can see that we have variables for tone, text, and reactions alongside the text information. This is all passed to and from the agent in a structured way.
 
 And you can specify how the agent will use this information by piping it into the system prompt and future prompts:
+
 ![til](./_static/complex1.png)
 ![til](./_static/complex2.png)
 
 Additionally, this allows for more complex information to be stored, such as emoji reactions:
+
 ![til](./_static/chat_complex.gif)
 
 Importantly, you will need to use a model that supports structured output for this app. More documentation about this can be found [here](https://docs.litellm.ai/docs/completion/json_mode).
 
-### chat_voice
+## chat_voice
 
 This extends chat_complex to add voice chat functionality. It uses the Whisper API to transcribe audio from the user's microphone. It then uses the ElevenLabs API to generate a voice response. Audio can be saved either locally or on an Amazon S3 bucket. For security reasons, you should only use local saving if you are running an experiment locally in the lab. 
 
@@ -40,7 +43,9 @@ This extends chat_complex to add voice chat functionality. It uses the Whisper A
 
 Using ElevenLabs, you can specify what voice id you would like the agent to use. You can also specify the tone of the voice by adding a prefix to the text. More information about the ElevenLabs API can be found [here](https://elevenlabs.io/docs/capabilities/text-to-speech).
 
-You can also save the user audio if desired to run further analyses on (e.g. paralinguistic features). As this is identifiable data, please use best security practices.
+You can also save the user audio if desired to run further analyses on (e.g. paralinguistic features). As this is identifiable data, please use best security practices. You can explore the voices in ElevenLabs community [here](https://elevenlabs.io/app/voice-library).
+
+I should note that this app has not been tested for performance or scalability, so I would advise to not run too many subjects at once. Additionally, ElevenLabs can be expensive to run, so be mindful of how many credits you are using throughout your studies.
 
 ## Experiment Settings
 

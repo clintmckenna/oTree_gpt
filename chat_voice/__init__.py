@@ -64,7 +64,7 @@ class C(BaseConstants):
     ## moved this to subsession creation
 
     ## ElevenLabs vars
-    # ELEVENLABS_KEY = environ.get('ELEVENLABS_KEY')
+    ELEVENLABS_KEY = environ.get('ELEVENLABS_KEY')
 
     ## set elevenlabs voice id
     ### this one is Sarah: A young, serious sounding crisp British female. Great for a podcast.
