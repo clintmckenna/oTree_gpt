@@ -11,8 +11,8 @@ I am continuously working on adding more templates. Here is the current list:
 
 This is a simple version of a chat task with a randomized LLM agent. The agent will be on of two personalities: Republican or Democrat. It also demonstrates how you can use randomized conditions to adjust things like CSS styles.
 
-![til](./_static/chat_simple1.png)
-![til](./_static/chat_simple2.png)
+<img src="./_static/chat_simple1.png" style="display: block;">
+<img src="./_static/chat_simple2.png" style="display: block;">
 
 This app is useful if you only care about the text that is sent to and from the LLM agent and will not use more complex features.
 
@@ -20,18 +20,18 @@ This app is useful if you only care about the text that is sent to and from the 
 
 This is a similar application that demonstrates how one can use sturctured output with the LLM response. This uses pydantic to validate the json schema for whatever variables you want passed to the LLM agent:
 
-![til](./_static/schema.png)
+<img src="./_static/schema.png" style="display: block;">
 
 In this case, you can see that we have variables for tone, text, and reactions alongside the text information. This is all passed to and from the agent in a structured way.
 
 And you can specify how the agent will use this information by piping it into the system prompt and future prompts:
 
-![til](./_static/complex1.png)
-![til](./_static/complex2.png)
+<img src="./_static/complex1.png" style="display: block;">
+<img src="./_static/complex2.png" style="display: block;">
 
 Additionally, this allows for more complex information to be stored, such as emoji reactions:
 
-![til](./_static/chat_complex.gif)
+<img src="./_static/chat_complex.gif" style="display: block;">
 
 Importantly, you will need to use a model that supports structured output for this app. More documentation about this can be found [here](https://docs.litellm.ai/docs/completion/json_mode).
 
@@ -39,7 +39,7 @@ Importantly, you will need to use a model that supports structured output for th
 
 This extends chat_complex to add voice chat functionality. It uses the Whisper API to transcribe audio from the user's microphone. It then uses the ElevenLabs API to generate a voice response. Audio can be saved either locally or on an Amazon S3 bucket. For security reasons, you should only use local saving if you are running an experiment locally in the lab. 
 
-![til](./_static/chat_voice.gif)
+<img src="./_static/chat_voice.gif" style="display: block;">
 
 Using ElevenLabs, you can specify what voice id you would like the agent to use. You can also specify the tone of the voice by adding a prefix to the text. More information about the ElevenLabs API can be found [here](https://elevenlabs.io/docs/capabilities/text-to-speech).
 
