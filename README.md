@@ -2,13 +2,15 @@
 
 This is a collection of templates for using large language model (LLM) agents in oTree behavioral experiments. I have updated this repository from previous verstions to use the LiteLLM package as a simple way to allow for multiple LLM services. I have also moved the chat processing to the server via live pages, which adds stability in saving all data to the database and allows for features like syncing across multiple human participants. Please feel free to leave any feedback or open an issue if you spot a problem.
 
-I am continuously working on adding more templates. Here is the current list:
-1. [chat_simple](#chat_simple)
-2. [chat_complex](#chat_complex)
-3. [chat_voice](#chat_voice)
+I am continuously working on adding more templates. Here is the current list, increasing by complexity:
+- [chat_simple](#chat_simple)
+- [chat_complex](#chat_complex)
+- [chat_voice](#chat_voice)
+- [dictator_game](#dictator_game)
+- [chat_multiple_agents](#chat_multiple_agents)
 
 
-## 1. chat_simple
+## chat_simple
 
 This is a simple version of a chat task with a randomized LLM agent. The agent will be on of two personalities: Republican or Democrat. It also demonstrates how you can use randomized conditions to adjust things like CSS styles.
 
@@ -17,7 +19,7 @@ This is a simple version of a chat task with a randomized LLM agent. The agent w
 
 This app is useful if you only care about the text that is sent to and from the LLM agent and will not use more complex features.
 
-## 2. chat_complex
+## chat_complex
 
 This is a similar application that demonstrates how one can use sturctured output with the LLM response. This uses pydantic to validate the json schema for whatever variables you want passed to the LLM agent:
 
@@ -28,15 +30,15 @@ In this case, you can see that we have variables for tone, text, and reactions a
 And you can specify how the agent will use this information by piping it into the system prompt and future prompts:
 
 <img src="./_static/complex1.png" style="display: block; width: 50%">
-<img src="./_static/complex2.png" style="display: block; width: 70%">
+<img src="./_static/complex2.png" style="display: block; width: 80%">
 
 Additionally, this allows for more complex information to be stored, such as emoji reactions:
 
-<img src="./_static/chat_complex.gif" style="display: block;">
+<img src="./_static/chat_complex.gif" style="display: block; width: 80%">
 
 Importantly, you will need to use a model that supports structured output for this app. More documentation about this can be found [here](https://docs.litellm.ai/docs/completion/json_mode).
 
-## 3. chat_voice
+## chat_voice
 
 This extends chat_complex to add voice chat functionality. It uses the Whisper API to transcribe audio from the user's microphone. It then uses the ElevenLabs API to generate a voice response. Audio can be saved either locally or on an Amazon S3 bucket. For security reasons, you should only use local saving if you are running an experiment locally in the lab. 
 
@@ -48,19 +50,19 @@ You can also save the user audio if desired to run further analyses on (e.g. par
 
 I should note that this app has not been tested for performance or scalability, so I would advise to not run too many subjects at once. Additionally, ElevenLabs can be expensive to run, so be mindful of how many credits you are using throughout your studies.
 
-## 4. dictator_game
+## dictator_game
 
 This is a simple dictator game that uses the LLM agent to make decision about the participant. This demonstrates how you can integrate the agent's decision along side other python functions. Here, an integer representing the percentage liklihood the agent will trust the participant is taken into account when the agent forms a message, and will update this amount depending on what the participant says.
 
 <img src="./_static/dictator.gif" style="display: block;">
 <img src="./_static/dictator2.png" style="display: block;">
 
-## 5. chat_multiple_agents
+## chat_multiple_agents
 
 In the previous experiments, the LLM agent message is triggered when the participant sends their own message. This experiment demonstrates how you can trigger a check every x seconds, allowing for more than one agent. In this case, we have a participant agent, acting as a debate partner, and a moderator agent, who will respond to the message history between the two. The participant agent responds to every participant message, but the moderator agent only responds to every 6th message.
 
-<img src="./_static/multi1.png" style="display: block;">
-<img src="./_static/multi2.png" style="display: block;">
+<img src="./_static/multi1.png" style="display: block; width: 80%">
+<img src="./_static/multi2.png" style="display: block; width: 80%">
 
 ## Experiment Settings
 
