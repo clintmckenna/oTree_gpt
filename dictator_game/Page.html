@@ -414,36 +414,52 @@
 
 
 
+    /* -------------------------------------------------------- */
+    /* trust rating animation styles                            */
+    /* -------------------------------------------------------- */
 
-
-
-
-
-
-
-    .btn {
-        margin: 5px; 
-        padding: 10px 20px; 
-        background-color: #007bff; 
-        color: #fff; border: none; 
-        border-radius: 5px; 
-        cursor: pointer;
-    }
-    
-    .btn:hover {
-        background-color: #0056b3; 
-        color: #fff;
-    }
-    
-    #micIcon {
-        width: 80px;
-        color:#abaaaa;
+    /* trust containers */
+    #trustRatingContainer {
+        position: relative;
+        display: inline-block;
     }
 
-    #micIcon, #soundIcon {
-        color: #abaaaa;
-    }  
-    
+    #infoSpan {
+        transition: color 0.5s ease;
+    }
+
+    .trust-change {
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        animation: floatAndFade 1.5s ease-out forwards;
+        font-weight: bold;
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    @keyframes floatAndFade {
+        0% {
+            top: 0;
+            opacity: 0;
+        }
+        20% {
+            opacity: 1;
+        }
+        100% {
+            top: -20px;
+            opacity: 0;
+        }
+    }
+
+    .positive-change {
+        color: #28a745;
+    }
+
+    .negative-change {
+        color: #dc3545;
+    }
+
 
 </style>
 

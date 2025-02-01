@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from datetime import datetime, timezone
 
 doc = """
-LLM chat with multiple agents, based on chat_complex
+Simple Trust game with LLM chat and structured output
 """
 
 author = 'Clint McKenna clint@calsocial.org'
@@ -17,7 +17,7 @@ author = 'Clint McKenna clint@calsocial.org'
 ########################################################
 
 class C(BaseConstants):
-    NAME_IN_URL = 'chat_complex'
+    NAME_IN_URL = 'dictator_game'
     PLAYERS_PER_GROUP = None
     NUM_ROUNDS = 1
 
@@ -26,7 +26,7 @@ class C(BaseConstants):
     EMOJIS = ['👍', '👎', '❤️',]
 
     # LLM vars
-    ## bot label and temperature
+    ## bot label and temp
 
     ### temperature (range 0 - 2)
     ### this sets the bot's creativity in responses, with higher values being more creative and less deterministic
@@ -45,16 +45,17 @@ class C(BaseConstants):
     ## https://platform.openai.com/docs/models
     ## IMPORTANT: for this app, you must use a model that supports structured output
     MODEL = "gpt-4o-mini"
-
+ 
     ## set system prompt for agents
     ## according to OpenAI's documentation, this should be less than ~1500 words
-    SYS_BOT = f"""You are Alex, a human participant taking part in an online discussion. Always limit messages to less than 200 words and speak in an informal language. 
+    ## set system prompt for participant
+    SYS_BOT = f"""You are Alex, a human participant taking part in a economic experiment. Always limit messages to less than 200 words and speak in an informal language. You will need to chat with the user to determine the user's message's trustworthiness. You play the role of a "dictator" who determines the user's trustworthiness.
 
-    Each user input will be a list of json objects containing:
+    Each user input will be a json object containing:
     - their sender identifer, which shows who sent the message (string)
-    - message Identifer (string)
-    - instructions for responding (string)
-    - tone to use (string)
+    - a message Identifer (string)
+    - instructions for responding
+    - a current trust rating (integer)
     - text you will be responding to (string)
     - reactions that users have made to different messages (in the 'reactions' field) (string)
 
@@ -66,9 +67,12 @@ class C(BaseConstants):
     As output, you MUST provide a json object with:
     - 'sender': your assigned sender identifier
     - 'msgId': your assigned message ID
-    - 'tone': your assigned tone
+    - 'perceptionDiff': your assigned perception difference based on the user's message
+    - 'trustRating': your assigned trust rating
+    - 'decision': your assigned decision
     - 'text': your response (limit to 300 characters)
     - 'reactions': your assigned reactions value"""
+
 
 
 ########################################################
@@ -88,18 +92,24 @@ litellm.enable_json_schema_validation = True
 class MsgOutputSchema(BaseModel):
     sender: str
     msgId: str
-    tone: str
+    perceptionDiff: int
+    trustRating: int
+    decision: bool
     text: str
     reactions: str
 
+
 # function to run messages 
-def runGPT(inputMessage, tone):
+def runGPT(inputMessage, trustRating):
 
     # grab bot vars from constants
     botTemp = C.BOT_TEMP
     botLabel = C.BOT_LABEL
     botPrompt = C.SYS_BOT
     
+    # grab trust rating
+    lastTrustRating = trustRating
+
     # assign message id and bot label
     dateNow = str(datetime.now(tz=timezone.utc).timestamp())
     botMsgId = botLabel + '-' + str(dateNow)
@@ -110,8 +120,10 @@ def runGPT(inputMessage, tone):
         Provide a json object with the following schema (DO NOT CHANGE ASSIGNED VALUES):
             'sender': {botLabel} (string),
             'msgId': {botMsgId} (string), 
-            'tone': {tone} (string), 
-            'text': Your response to the user's message in a {tone} tone (string), 
+            'perceptionDiff': 'perceptionDiff': an integer value between and including -5 to 5, based on how trustworthy you think the user is based on their most recent message (integer),
+            'trustRating': an integer sum of your previous trustRating ({lastTrustRating}) and your current perception difference (perceptionDiff) (integer),
+            'decision': None (boolean),
+            'text': Your response to the user's message in a tone according to your trustRating out of 100 (string), 
             'reactions': {json.dumps(reactionsDict)} (string)
     """
 
@@ -132,7 +144,6 @@ def runGPT(inputMessage, tone):
     # return the response json
     return response.choices[0].message.content
 
-
 ########################################################
 # Models                                               #
 ########################################################
@@ -150,24 +161,29 @@ def creating_session(subsession: Subsession):
     # iterate through players
     for p in players:
 
-        # randomize tone for the conversation
-        # tones = ['friendly', 'sarcastic', 'UNHINGED']
-        tones = ['friendly', ]
-        tone = random.choice(tones)
-        p.tone = tone
+        # create initial trust rating
+        initialTrustRating = round(random.gauss(50, 5))  # mean=50, std_dev=5
+        # ensure value stays between 40-60
+        initialTrustRating = max(40, min(60, initialTrustRating))
+        p.trustRating = initialTrustRating
+
+
 
 # group vars
 class Group(BaseGroup):
-    pass    
+    pass
 
 # player vars
 class Player(BasePlayer):
 
-    # tone for the bot
-    tone = models.StringField()
-
+    # trust rating, overwritten as chat progresses
+    trustRating = models.IntegerField()
+    # decision to trust, overwritten as chat progresses
+    decision = models.BooleanField(initial = False)    
+    
     # cache of all messages in conversation
     cachedMessages = models.LongStringField(initial='[]')
+
 
 ########################################################
 # Extra models                                         #
@@ -182,9 +198,13 @@ class MessageData(ExtraModel):
     msgId = models.StringField()
     timestamp = models.StringField()
     sender = models.StringField()
-    tone = models.StringField()
     fullText = models.StringField()
     msgText = models.StringField()
+
+    # decision info
+    perceptionDiff = models.IntegerField()
+    trustRating = models.IntegerField()
+    decision = models.BooleanField()
 
 # message reaction information
 class MsgReactionData(ExtraModel):
@@ -213,7 +233,9 @@ def custom_export(players):
         'msgId',
         'timestamp',
         'sender',
-        'tone',
+        'perceptionDiff',
+        'trustRating',
+        'decision',
         'fullText',
         'msgText',
         'reactionData'
@@ -247,7 +269,7 @@ def custom_export(players):
                 } for r in mReactions
             ]
             # save as a json dictionary to column
-            # you will have to unnest it afterwards since I don't think you can have multiple exports
+            # you will have to expand it afterwards
             reacts = json.dumps(reaction_list)
         except:
             reacts = '[]'
@@ -260,7 +282,9 @@ def custom_export(players):
             m.msgId,
             m.timestamp,
             m.sender,
-            m.tone,
+            m.perceptionDiff,
+            m.trustRating,
+            m.decision,
             fullText,
             m.msgText,
             reacts,
@@ -274,7 +298,7 @@ def custom_export(players):
 # chat page 
 class chat(Page):
     form_model = 'player'
-    timeout_seconds = 300
+    timeout_seconds = 60
 
     # vars that we will pass to chat.html
     @staticmethod
@@ -289,8 +313,10 @@ class chat(Page):
             playerId = currentPlayer,
             emojis = C.EMOJIS,
             allow_reactions = C.ALLOW_REACTIONS,
+            trustRating = player.trustRating,
         )
 
+    
     # live method functions
     @staticmethod
     def live_method(player: Player, data):
@@ -308,8 +334,9 @@ class chat(Page):
         # create current player identifier
         currentPlayer = 'P' + str(player.id_in_group)
 
-        # grab tone from data
-        tone = player.tone
+        # grab current trust rating and decision from data
+        trustRating = player.trustRating
+        decision = player.decision
         
         # handle different event types
         if 'event' in data:
@@ -319,7 +346,7 @@ class chat(Page):
             
             # handle player input logic
             if event == 'text':
-                
+          
                 # create message id
                 dateNow = str(datetime.now(tz=timezone.utc).timestamp())
                 msgId = currentPlayer + '-' + str(dateNow)
@@ -333,11 +360,12 @@ class chat(Page):
                     sender=currentPlayer,
                     msgId=msgId,
                     instructions='',
-                    tone=tone,
+                    trustRating=trustRating,
                     text=text,
                     reactions=json.dumps(reactionsDict),
                 )
                 
+
                 # create message in LLM format
                 msg = {'role': 'user', 'content': json.dumps(content)}
 
@@ -347,10 +375,13 @@ class chat(Page):
                     msgId=msgId,
                     timestamp=dateNow,
                     sender='Subject',
-                    tone=tone,
                     fullText=json.dumps(msg),
                     msgText=text,
+                    perceptionDiff=int(),
+                    trustRating = trustRating,
+                    decision = decision,
                 )
+
 
                 # add message to list
                 messages.append(msg)
@@ -361,11 +392,11 @@ class chat(Page):
                 # return output to chat.html
                 return {player.id_in_group: dict(
                     event='text',
-                    selfText=text,
                     sender=currentPlayer,
                     msgId=msgId,
-                    tone=tone,
+                    selfText=text,
                 )}
+
 
             # handle bot messages
             elif event == 'botMsg':
@@ -375,13 +406,32 @@ class chat(Page):
 
                 # run llm on input text
                 dateNow = str(datetime.now(tz=timezone.utc).timestamp())
-                botText = runGPT(messages, tone)
+                botText = runGPT(messages, trustRating)
                 
                 # grab bot response data
                 botContent = json.loads(botText)
                 outputText = botContent['text']
                 botMsgId = botContent['msgId']
+                newPerceptionDiff = botContent['perceptionDiff']
+                newTrustRating = botContent['trustRating']
+                    
+
+                # here, we will calculate the decision from the trust rating and overwrite the bot's LLM output for this field
+                # you could alternatively just ask the LLM to make a decision, but you have more control this way
                 
+                # Convert trust rating to probability (0-100 scale to 0-1 scale)
+                probability = newTrustRating / 100
+                # Generate random number between 0 and 1, if less than probability, return True
+                newDecision = random.random() < probability
+
+                # save to player vars
+                player.decision = newDecision
+                player.trustRating = newTrustRating
+
+                # overwrite None decision in botText with calculated decision
+                botContent['decision'] = newDecision
+                botText = json.dumps(botContent)
+
                 # create bot message
                 botMsg = {'role': 'assistant', 'content': botText}
                 
@@ -391,7 +441,9 @@ class chat(Page):
                     sender=botId,
                     msgId=botMsgId,
                     timestamp=dateNow,
-                    tone=tone,
+                    trustRating = newTrustRating,
+                    perceptionDiff = newPerceptionDiff,
+                    decision = newDecision,
                     fullText=json.dumps(botMsg),
                     msgText=outputText,
                 )
@@ -405,7 +457,9 @@ class chat(Page):
                     event='botText',
                     sender=botId,
                     botMsgId=botMsgId,
-                    tone=tone,
+                    trustRating = newTrustRating,
+                    perceptionDiff = newPerceptionDiff,
+                    decision = newDecision,
                     text=outputText,
                 )}
 
@@ -471,10 +525,24 @@ class chat(Page):
                         emoji=emoji
                     )}
 
-            
-
-
+# decision results page 
+class decision(Page):
+    form_model = 'player'
+    
+    @staticmethod
+    def vars_for_template(player):
+        
+        # grab decision and trust rating
+        decision = player.decision
+        trustRating = player.trustRating
+        
+        return dict(
+            decision = decision,
+            trustRating = trustRating,
+        )
+    
 # page sequence
 page_sequence = [
     chat,
+    decision,
 ]

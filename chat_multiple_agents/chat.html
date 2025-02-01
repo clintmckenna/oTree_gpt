@@ -1,4 +1,4 @@
-{{ extends "chat_voice/Page.html" }}
+{{ extends "chat_multiple_agents/Page.html" }}
 
 {{ block title }}
 {{ endblock }}
@@ -6,22 +6,12 @@
 {{ block styles }}
 {{ endblock }}
 
-{{ block scripts }}
 
+{{ block scripts }}
 <script>
 
-    // Build static URL using window.location
-    const STATIC_BASE = window.location.origin + '/static/global/chat_voice/recordings/';
-
-    // Function to get the correct audio URL
-    function getAudioUrl(audioPath) {
-        // If it's a full URL (S3), return as is
-        if (audioPath.startsWith('http')) {
-            return audioPath;
-        }
-        // Otherwise, prepend the static base path
-        return STATIC_BASE + audioPath;
-    }
+    // how many seconds to wait before triggering the bot message check
+    var botSleepTime = 5;
 
     // run this when page loads
     document.addEventListener('DOMContentLoaded', function() {
@@ -30,106 +20,17 @@
         form.addEventListener('submit', function(e) {
             e.preventDefault();
         });
-
-        // Prevent spacebar from scrolling the page
-        window.addEventListener('keydown', function(e) {
-            if (e.code === 'Space' || e.keyCode === 32) {
-                e.preventDefault();
-                return false;
-            }
-        });
-
-        // hide text transcript if showTextTranscript is false
-        var showTextTranscript = js_vars.showTextTranscript;
-        if (!showTextTranscript) {
-            document.getElementById("chatPanel").style.display = "none";
-        }
+        
+        // delay chat input focus
+        setTimeout(() => {
+            const chatInput = document.getElementById('chatinput');
+            chatInput.focus();
+        }, 100);
 
         // start listening for live page functions
-        liveSend({});
+        liveSend({'event': 'phase', 'phase': 0});
+        
     });
-
-
-
-    // recording audio
-    const spacebarKey = 32; // Spacebar keycode
-    let isRecording = false;
-    let audioRecorder;
-    let audioChunks = [];
-    let startTime;
-    let recordingInterval;
-
-    
-
-    // Handle spacebar press to toggle recording
-    function toggleRecording(event) {
-        if (event.keyCode === spacebarKey && !event.repeat) {
-            // Prevent any default behavior including scrolling
-            event.preventDefault();
-            event.stopPropagation();
-            
-            if (!isRecording) {
-                // Start recording
-                isRecording = true;
-                audioChunks = [];
-                startTime = Date.now();
-                audioRecorder.start();
-                console.log("Started recording");
-                document.getElementById("micIcon").style.color = "#38A1F3";
-            } else {
-                // Stop recording and send
-                isRecording = false;
-                audioRecorder.stop();
-                clearInterval(recordingInterval);
-                document.getElementById("micIcon").style.color = "#abaaaa";
-                console.log("Stopped recording");
-            }
-        }
-    }
-
-    navigator.mediaDevices.getUserMedia({ 
-        audio: true,
-        video: false
-    })
-    .then(stream => {
-        // Create MediaRecorder with WebM format
-        const options = {
-            mimeType: 'video/webm; codecs=opus'
-        };
-
-        audioRecorder = new MediaRecorder(stream, options);
-        console.log("Using MIME type:", audioRecorder.mimeType);
-
-        // dataavailable event is fired when the recording is stopped
-        audioRecorder.addEventListener('dataavailable', e => {
-            console.log("Got audio chunk, size:", e.data.size);
-            audioChunks.push(e.data);
-        });
-
-        audioRecorder.addEventListener('stop', () => {
-            // Convert audio chunks to Blob
-            const blob = new Blob(audioChunks, { type: 'video/webm' });
-            console.log("Created audio blob:", blob);
-            console.log("Final blob size:", blob.size);
-            
-            // Convert to base64 and send
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                const base64 = reader.result.split(',')[1];
-                console.log("Base64 conversion complete, length:", base64.length);
-                console.log("First 100 chars of base64:", base64.substring(0, 100));
-                liveSend({'event': 'text', 'text': base64});
-            };
-            reader.readAsDataURL(blob);
-        });
-
-        // Add the keydown event listener
-        document.addEventListener('keydown', toggleRecording);
-    })
-    .catch(err => {
-        console.error("getUserMedia error:", err);
-    });
-
 
 
     // Close emoji bar when clicking outside
@@ -162,12 +63,12 @@
 
 
     // run sendMsg when enter key is pressed
-    // var chatInput = document.getElementById('chatinput');    
-    // chatInput.addEventListener('keydown', function (event) {
-    //     if (event.key === 'Enter') {
-    //         sendMsg();
-    //     }
-    // });
+    var chatInput = document.getElementById('chatinput');    
+    chatInput.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter') {
+            sendMsg();
+        }
+    });
 
     
     // function to send user message to server
@@ -202,12 +103,14 @@
 
             // grab data from server
             const messageId = data.msgId;
+            // const botMsgId = data.botMsgId;
             const selfText = data.selfText;
+            // const botText = data.botText;
             const tone = data.tone;
             const sender = data.sender;
-            const currentPlayer = data.currentPlayer;
-            const audioFilePath = data.audioFilePath;
-  
+            // const currentPlayer = data.currentPlayer;
+            const phase = data.phase;
+
             // get chat elements
             const chatInput = document.getElementById('chatinput');
             const chatMessages = document.getElementById('chatMessages');
@@ -216,7 +119,7 @@
             // create message html from subject input and insert into chatMessages
             let messageHtml = `
                 <div class="message selfMsg" id="${messageId}" data-author="${sender}">
-                    <strong>You<br></strong> ${selfText}
+                    <strong>${sender} (You)<br></strong> ${selfText}
                     ${js_vars.allow_reactions ? `
                     <div class="message-reaction-bar">
                         ${js_vars.emojis.map(emoji => 
@@ -230,18 +133,48 @@
             chatMessages.insertAdjacentHTML('beforeend', messageHtml);
             chatMessages.scrollTop = chatMessages.scrollHeight;
 
-            // trigger bot message
-            liveSend({'event': 'botMsg'});
+
+            // update phase if zero
+            if (phase == 0) {
+                console.log('Sending phase update to 1...');
+                liveSend({'event': 'phase', 'phase': 1});
+                
+                // Trigger both bot greetings
+                setTimeout(() => {
+                    console.log('Sending participant bot greeting...');
+                    liveSend({'event': 'botMsg', 'botId': js_vars.bot_label1, 'isGreeting': true});
+                    
+                    // Send moderator greeting after a short delay
+                    setTimeout(() => {
+                        console.log('Sending moderator bot greeting...');
+                        liveSend({'event': 'botMsg', 'botId': js_vars.bot_label2, 'isGreeting': true});
+                    }, 2000);
+                }, 500);
+                
+            } else {
+                // do nothing
+            }
+
 
         // handle bot messages
         } else if (event == 'botText') {
 
             // grab data from server
+            // const messageId = data.msgId;
             const botMsgId = data.botMsgId;
             const text = data.text;
+            // const botText = data.botText;
             const tone = data.tone;
             const sender = data.sender;
-            const audioFilePath = data.audioFilePath;
+            // const currentPlayer = data.currentPlayer;
+            const phase = data.phase;
+            
+            var botclass;
+            if (sender == js_vars.bot_label2) {
+                botclass = 'moderatorText';
+            } else {
+                botclass = '';
+            }
 
             // get chat elements
             const chatInput = document.getElementById('chatinput');
@@ -251,7 +184,7 @@
             // Add typing indicator for bot and insert into chatMessages
             const typingId = 'typing-' + Date.now();
             let typingHtml = `
-                <div class="message botMsg typing" id="${typingId}">
+                <div class="message botMsg typing ${botclass}" id="${typingId}">
                     <div class="typing-indicator">
                         <span></span>
                         <span></span>
@@ -279,7 +212,7 @@
                 
                 // replace with bot response
                 let botHtml = `
-                    <div class="message botMsg" id="${botMsgId}" data-author="${sender}">
+                    <div class="message botMsg ${botclass}" id="${botMsgId}" data-author="${sender}">
                         <strong>${sender}<br></strong> ${text}
                         ${js_vars.allow_reactions ? `
                         <div class="message-reaction-bar">
@@ -298,63 +231,10 @@
                 // also update tone span
                 toneSpan.textContent = tone;
 
-                // play audio from file path
-                if (audioFilePath) {
-                    console.log('Loading audio from:', audioFilePath);
-                    const audioUrl = getAudioUrl(audioFilePath);
-                    console.log('Final audio URL:', audioUrl);
-                    const soundIcon = document.getElementById("soundIcon");
-
-                    // Verify URL is accessible
-                    fetch(audioUrl)
-                        .then(response => {
-                            if (!response.ok) {
-                                throw new Error('Network response was not ok');
-                            }
-                            return response.blob();
-                        })
-                        .then(blob => {
-                            // Create object URL from blob
-                            const objectUrl = URL.createObjectURL(blob);
-                            const audio = new Audio(objectUrl);
-                            
-                            audio.addEventListener('error', (e) => {
-                                console.error('Audio error:', e);
-                                console.error('Audio error code:', audio.error ? audio.error.code : 'No error code');
-                                console.error('Audio error message:', audio.error ? audio.error.message : 'No error message');
-                                soundIcon.style.color = '#ff0000';  // Red to indicate error
-                            });
-
-                            audio.addEventListener('canplaythrough', () => {
-                                console.log('Audio ready to play');
-                                audio.play()
-                                    .then(() => {
-                                        console.log('Playing started');
-                                        soundIcon.style.color = '#38A1F3';  // Blue while playing (same as mic icon)
-                                    })
-                                    .catch(e => console.error('Play error:', e));
-                            });
-
-                            // Clean up object URL when done
-                            audio.addEventListener('ended', () => {
-                                URL.revokeObjectURL(objectUrl);
-                                soundIcon.style.color = '#abaaaa';  // Reset color
-                            });
-
-                            // Handle any audio loading errors
-                            audio.onerror = function() {
-                                console.error('Error loading audio file:', audioUrl);
-                                soundIcon.style.color = '#ff0000';  // Red to indicate error
-                            };
-                        })
-                        .catch(error => {
-                            console.error('Error loading audio file:', error);
-                            soundIcon.style.color = '#ff0000';  // Red to indicate error
-                        });
-                }
-
             }, 2000);
 
+            // increment phase
+            liveSend({'event': 'phase', 'phase': phase + 1});
 
         // handle message reactions
         } else if (event == 'msgReaction') {
@@ -404,6 +284,47 @@
             if (reactionBar) {
                 reactionBar.classList.remove('persistent');
             }
+
+        // handle phase logic
+        } else if (event == 'phase') {
+            
+            // grab phase
+            const phase = data["phase"];
+            console.log('Phase event received:', phase);
+
+            // if phase is 0, do nothing
+            // else, update with bot messages
+            if (phase == 0) {
+                console.log('Phase 0 - no action needed');
+            } else {
+                console.log('Setting up bot message checks...');
+                
+                // Start the regular bot message checks after a delay to allow greetings
+                setTimeout(() => {
+                    console.log('Starting initial bot checks...');
+                    // Initial check for both bots
+                    liveSend({'event': 'botMsg', 'botId': js_vars.bot_label1});
+                    setTimeout(() => {
+                        liveSend({'event': 'botMsg', 'botId': js_vars.bot_label2});
+                    }, 1000);
+                    
+                    console.log('Setting up regular interval checks...');
+                    // Then set up regular interval
+                    const intervalId = setInterval(() => {
+                        console.log('Regular interval check - trying participant bot...');
+                        liveSend({'event': 'botMsg', 'botId': js_vars.bot_label1});
+                        
+                        // Try moderator bot after a short delay
+                        setTimeout(() => {
+                            console.log('Regular interval check - trying moderator bot...');
+                            liveSend({'event': 'botMsg', 'botId': js_vars.bot_label2});
+                        }, 1000);
+                    }, botSleepTime*1000);
+                    
+                    // Store interval ID in case we need to clear it later
+                    window.botCheckInterval = intervalId;
+                }, 3000);
+            }
         }
     }
 </script>
@@ -413,7 +334,7 @@
 {{ block content }}
 <div class='container card mb-3'>
     <div class='row no-gutters'>
-        
+
         <!-- left side of interface, with timer and other info -->
         <div class='infoBox col-md-4 d-flex align-items-center justify-content-center' style='font-size:22px; height: 100%; min-height: 300px;'>
             <span class='timer'>
@@ -422,17 +343,9 @@
             </span>
             <br>
             <b>Bot tone:</b> <span id='toneSpan' style="display: inline; margin-left: 5px;">&nbsp</span>
-            <b>Prompt:</b> <i>Chat with the bot about anything.</i>
-            <br>
-
             
-            <div style="display: flex; gap: 30px; align-items: center;">
-                <svg id="micIcon" xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-mic"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
-                <svg id="soundIcon" xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-volume-2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
-            </div>
-            <br> 
-            Tap the spacebar key to enable voice recording. Tap again to stop recording and send your message.
-
+            <br><br>
+            <b>Prompt:</b> <i>Debate the bot on cognitive dissonance vs. self-percetion theory</i>
         </div>
 
         <!-- right side of interface, with chat box and text input -->
@@ -446,14 +359,13 @@
                     Please send a message to begin the conversation.
                 </div>
             </div>
-                    
-            <!-- disable input box for voice only -->
-            <!-- <div class='inputBox'>
+        
+            <div class='inputBox'>
                 <div class='typeInputBox'>
                     <input type='text' id='chatinput' style='text-align:right;' maxlength='200'>
                     <button type='button' onclick='sendMsg()'>Send</button>
                 </div>
-            </div>  -->
+            </div> 
         </div>
     </div>
 </div>

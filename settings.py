@@ -17,6 +17,16 @@ SESSION_CONFIGS = [
          app_sequence=['chat_voice',],
          num_demo_participants=1,
      ),
+     dict(
+         name='dictator_game',
+         app_sequence=['dictator_game',],
+         num_demo_participants=1,
+     ),
+     dict(
+         name='chat_multiple_agents',
+         app_sequence=['chat_multiple_agents',],
+         num_demo_participants=1,
+     ),
 ]
 # if you set a property in SESSION_CONFIG_DEFAULTS, it will be inherited by all configs
 # in SESSION_CONFIGS, except those that explicitly override it.

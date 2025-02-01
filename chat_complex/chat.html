@@ -4,14 +4,12 @@
 {{ endblock }}
 
 {{ block styles }}
-<style>
-    
-</style>
 {{ endblock }}
 
 
 {{ block scripts }}
 <script>
+
     // run this when page loads
     document.addEventListener('DOMContentLoaded', function() {
         // Prevent form submission when pressing enter or clicking buttons
@@ -28,6 +26,7 @@
 
         // start listening for live page functions
         liveSend({});
+        
     });
 
 
@@ -73,7 +72,7 @@
     function sendMsg() {
         const text = chatInput.value.trim();
         if (text) {
-            liveSend({'text': text});
+            liveSend({'event': 'text', 'text': text});
             // clear the input field
             chatInput.value = '';
         }
@@ -87,7 +86,7 @@
         const author = messageElement.dataset.author;
 
         // send message reaction to server
-        liveSend({'msgId': messageId, 'emoji': emoji, 'target': author});
+        liveSend({'event': 'reaction', 'msgId': messageId, 'emoji': emoji, 'target': author});
 
     }
 
@@ -96,17 +95,15 @@
 
         let event = data["event"];
 
-        // Handle text messages
+        // Handle text messages send by humans
         if (event == 'text') {
 
             // grab data from server
             const messageId = data.msgId;
-            const botMsgId = data.botMsgId;
             const selfText = data.selfText;
-            const botText = data.botText;
             const tone = data.tone;
-            const currentPlayer = data.currentPlayer;
-
+            const sender = data.sender;
+            
             // get chat elements
             const chatInput = document.getElementById('chatinput');
             const chatMessages = document.getElementById('chatMessages');
@@ -114,7 +111,7 @@
             
             // create message html from subject input and insert into chatMessages
             let messageHtml = `
-                <div class="message selfMsg" id="${messageId}" data-author="${currentPlayer}">
+                <div class="message selfMsg" id="${messageId}" data-author="${sender}">
                     <strong>You<br></strong> ${selfText}
                     ${js_vars.allow_reactions ? `
                     <div class="message-reaction-bar">
@@ -128,6 +125,25 @@
             `;
             chatMessages.insertAdjacentHTML('beforeend', messageHtml);
             chatMessages.scrollTop = chatMessages.scrollHeight;
+
+            // trigger bot message
+            liveSend({'event': 'botMsg'});
+            
+
+
+        // handle bot messages
+        } else if (event == 'botText') {
+
+            // grab data from server
+            const botMsgId = data.botMsgId;
+            const text = data.text;
+            const tone = data.tone;
+            const sender = data.sender;
+
+            // get chat elements
+            const chatInput = document.getElementById('chatinput');
+            const chatMessages = document.getElementById('chatMessages');
+            const toneSpan = document.getElementById('toneSpan');
 
             // Add typing indicator for bot and insert into chatMessages
             const typingId = 'typing-' + Date.now();
@@ -160,8 +176,8 @@
                 
                 // replace with bot response
                 let botHtml = `
-                    <div class="message botMsg" id="${botMsgId}" data-author="Bot">
-                        <strong>Bot<br></strong> ${botText}
+                    <div class="message botMsg" id="${botMsgId}" data-author="${sender}">
+                        <strong>${sender}<br></strong> ${text}
                         ${js_vars.allow_reactions ? `
                         <div class="message-reaction-bar">
                             ${js_vars.emojis.map(emoji => 
@@ -180,6 +196,7 @@
                 toneSpan.textContent = tone;
 
             }, 2000);
+
 
         // handle message reactions
         } else if (event == 'msgReaction') {
@@ -221,6 +238,7 @@
                     <span class="reaction-count">1</span>
                 `;
                 reactionsContainer.appendChild(reactionBadge);
+
             }
 
             // Remove the reaction bar's persistent class after reacting
@@ -237,6 +255,8 @@
 {{ block content }}
 <div class='container card mb-3'>
     <div class='row no-gutters'>
+        
+        <!-- left side of interface, with timer and other info -->
         <div class='infoBox col-md-4 d-flex align-items-center justify-content-center' style='font-size:22px; height: 100%; min-height: 300px;'>
             <span class='timer'>
                 Page will auto-advance in:
@@ -249,6 +269,7 @@
             <b>Prompt:</b> <i>Chat with the bot about anything.</i>
         </div>
 
+        <!-- right side of interface, with chat box and text input -->
         <div class='chatPanel col-md-8' id='chatPanel'>
             <div class='chatHeader'>
                 Bot Chat
