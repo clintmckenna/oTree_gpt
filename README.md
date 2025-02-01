@@ -61,8 +61,8 @@ This is a simple dictator game that uses the LLM agent to make decision about th
 
 In the previous experiments, the LLM agent message is triggered when the participant sends their own message. This experiment demonstrates how you can trigger a check every x seconds, allowing for more than one agent. In this case, we have a participant agent, acting as a debate partner, and a moderator agent, who will respond to the message history between the two. The participant agent responds to every participant message, but the moderator agent only responds to every 6th message.
 
-<img src="./_static/multi1.png" style="display: block; width: 80%">
-<img src="./_static/multi2.png" style="display: block; width: 80%">
+<img src="./_static/multi1.png" style="display: block; width: 60%">
+<img src="./_static/multi2.png" style="display: block; width: 60%">
 
 ## Experiment Settings
 
