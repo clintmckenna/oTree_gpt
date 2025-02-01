@@ -29,12 +29,12 @@ In this case, you can see that we have variables for tone, text, and reactions a
 
 And you can specify how the agent will use this information by piping it into the system prompt and future prompts:
 
-<img src="./_static/complex1.png" style="display: block; width: 50%">
-<img src="./_static/complex2.png" style="display: block; width: 80%">
+<img src="./_static/complex1.png" style="display: block; width: 70%">
+<img src="./_static/complex2.png" style="display: block; width: 70%">
 
 Additionally, this allows for more complex information to be stored, such as emoji reactions:
 
-<img src="./_static/chat_complex.gif" style="display: block; width: 80%">
+<img src="./_static/chat_complex.gif" style="display: block;">
 
 Importantly, you will need to use a model that supports structured output for this app. More documentation about this can be found [here](https://docs.litellm.ai/docs/completion/json_mode).
 
