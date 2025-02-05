@@ -1,6 +1,6 @@
 otree==5.10.3
 psycopg2>=2.8.4
-litellm
-pydantic
-boto3
-jinja2
+litellm==1.59.0
+pydantic==2.10.5
+boto3==1.36.7
+Jinja2==3.1.5
