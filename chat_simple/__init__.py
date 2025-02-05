@@ -1,6 +1,6 @@
 from otree.api import *
 from os import environ
-import litellm
+from openai import OpenAI
 import random
 import json
 from datetime import datetime, timezone
@@ -81,24 +81,20 @@ class C(BaseConstants):
 
 
 ########################################################
-# LiteLLM Setup                                        #
+# LLM Setup                                            #
 ########################################################
-
-# set litellm OpenAI key 
-litellm.api_key = C.OPENAI_KEY
-
-# log messages in console
-litellm.set_verbose = True
 
 # function to run messages
 def runGPT(inputMessage):
 
-    # run LiteLLM completion function
-    response = litellm.completion(
-        model = C.MODEL,
-        messages = inputMessage,
-        temperature = C.BOT_TEMP
+    # openai client and response creation
+    client = OpenAI(api_key=C.OPENAI_KEY)
+    response = client.chat.completions.create(
+        model=C.MODEL,
+        temperature=C.BOT_TEMP,
+        messages=inputMessage
     )
+
     # return just the text response
     return response.choices[0].message.content
 

@@ -1,6 +1,6 @@
 from otree.api import *
 from os import environ
-import litellm
+from openai import OpenAI
 import random
 import json
 from pydantic import BaseModel 
@@ -76,17 +76,8 @@ class C(BaseConstants):
 
 
 ########################################################
-# LiteLLM Setup                                        #
+# OpenAI Setup                                         #
 ########################################################
-
-# set litellm OpenAI key 
-litellm.api_key = C.OPENAI_KEY
-
-# log messages in console
-litellm.set_verbose = True
-
-# validate json schema setting
-litellm.enable_json_schema_validation = True
 
 # specify json schema for bot messages
 class MsgOutputSchema(BaseModel):
@@ -134,15 +125,24 @@ def runGPT(inputMessage, trustRating):
     # combine input message with assigned prompt
     inputMsg = [{'role': 'system', 'content': botPrompt}] + inputMessage
 
-    # run LiteLLM completion function
-    response = litellm.completion(
-        model = C.MODEL,
-        messages = inputMsg,
-        temperature = botTemp,
-        response_format = MsgOutputSchema
+    # openai client and response creation
+    client = OpenAI(api_key=C.OPENAI_KEY)
+    response = client.chat.completions.create(
+        model=C.MODEL,
+        temperature=botTemp,
+        messages=inputMsg,
+        functions=[{
+            "name": "msg_output_schema",
+            "parameters": MsgOutputSchema.model_json_schema()
+        }],
+        function_call={"name": "msg_output_schema"}
     )
+
+    # grab text output
+    msgOutput = response.choices[0].message.function_call.arguments
+
     # return the response json
-    return response.choices[0].message.content
+    return msgOutput
 
 ########################################################
 # Models                                               #
