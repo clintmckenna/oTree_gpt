@@ -1,0 +1,584 @@
+{{ extends "global/Page.html" }}
+{{ load static otree }}
+
+{{ block app_styles }}
+
+
+<!-- load cutom font ----------------------------------------->
+<link href='https://fonts.googleapis.com/css?family=Roboto:400,100,100italic,300,300italic,400italic,500,500italic,700,700italic,900italic,900' rel='stylesheet' type='text/css'>
+
+
+<style>  
+
+    /* -------------------------------------------------------- */
+    /* global oTree styles                                      */ 
+    /* -------------------------------------------------------- */
+
+    /* Disable default scrolling and set a consistent font size */
+    .otree-body {
+        /* max-width: 1200px; */
+        /* min-width: 1000px; */
+        /* font-family: 'Roboto', sans-serif; */
+        /* overflow-x: scroll; */
+        
+        /* font-size: 18px; */
+        /* overflow: hidden; */
+        margin: 0; 
+        background: #fff; 
+    }
+
+    /* title */
+    .otree-title {
+        display: none; 
+    }
+
+    /* wait page (entire dialogue) */
+    /* .otree-wait-page {} */
+
+    /* wait page (dialogue title) */
+    /* .otree-wait-page__title {} */
+
+    /* wait page (dialogue body) */
+    /* .otree-wait-page__body {} */
+
+    /* timer */
+    /* using a custom timer instead of the default oTree one */
+    .otree-timer {
+        display: none;
+    }
+
+    /* next button */
+    /* .otree-btn-next {} */
+
+    /* form errors alert */
+    /* .otree-form-errors {} */
+
+
+    /* -------------------------------------------------------- */
+    /* timer styles                                             */ 
+    /* -------------------------------------------------------- */
+
+    /* Responsive timer with custom styling */
+    .timer {
+        /* margin-bottom: 10px; */
+        /* align-self:center; */
+        /* margin-top: auto; */
+        color:#6874E8;
+        /* font-weight: bold; */
+        /* text-align: center; */
+        /* font-size: 20px; */
+        font-weight: 700;
+    }
+
+
+    /* -------------------------------------------------------- */
+    /* div container styles                                     */ 
+    /* -------------------------------------------------------- */
+
+    /* Responsive container with maximum width */
+    .container {
+        max-width: 1200px;
+    }
+
+    /* Vertically centered info panel with instructions and timer */
+    .infoBox {
+        height: 500px;
+        text-align: center;
+        padding: 15px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+
+    /* chat panel contaning messages and user input */
+    .chatPanel {
+        display: flex;
+        flex-direction: column;
+        width: 500px;
+        height: 500px;
+        margin: 5px auto;
+        padding: 0;
+    }
+
+    /* chat header */
+    .chatHeader {
+        background: #343434;
+        color: white;
+        padding: 10px;
+        border-radius: 8px 8px 0 0;   
+    }
+
+    /* chat messages div */
+    .chatMessages {
+        background: white;
+        border: 1px solid #ccc;
+        border-radius: 0 0 8px 8px;
+        padding: 1rem;
+        padding-right: calc(1vw);
+        overflow-x: hidden;
+        overflow-y:auto;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        scrollbar-gutter: stable;   
+    }
+
+    /* div for individual messages */
+    .message {
+        position: relative;
+        z-index: 1;
+        text-align: right;
+        margin-bottom: 10px;
+        padding: 10px 10px 10px 12px;
+        border-radius: 20px;
+        max-width: 80%;
+        word-wrap: break-word;
+        align-self: flex-end;
+        display: block;
+        width: fit-content;
+        cursor: pointer;
+    }
+
+    .message:hover {
+        z-index: 2;
+    }
+
+    /* Message reaction bar base styles */
+    .message-reaction-bar {
+        position: absolute;
+        z-index: 999999; /* Extremely high z-index */
+        display: flex;
+        gap: 5px;
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 20px;
+        padding: 5px 10px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        opacity: 0;
+        bottom: -40px;
+        margin-top: 5px;
+        pointer-events: auto;
+    }
+
+    /* Show reaction bar on message hover */
+    .message:hover .message-reaction-bar {
+        opacity: 1;
+        transition: 0.2s ease-out;
+    }
+
+    /* Persistent reaction bar visibility */
+    .message-reaction-bar.persistent {
+        opacity: 1;
+    }
+
+    /* Position reaction bar for different message types */
+    .botMsg .message-reaction-bar {
+        right: 0;
+        justify-content: flex-end;
+        margin-right: 10px;
+    }
+
+    .selfMsg .message-reaction-bar {
+        right: auto;
+        left: 50%;
+        transform: translateX(-90%);
+        justify-content: flex-start;
+        margin-left: 10px;
+    }
+
+    /* Create a container for reaction bars that's always on top */
+    .reaction-bars-container {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        pointer-events: none;
+        z-index: 9999;
+    }
+
+    /* Make all reaction bars appear in this container */
+    .message-reaction-bar {
+        position: absolute;
+        z-index: 1;
+    }
+
+    /* -------------------------------------------------------- */
+    /* msg div styles                                           */
+    /* -------------------------------------------------------- */ 
+
+    /* system message */
+    .sysMsg {
+        background-color: #204a79;
+        color: #e4e4e4;
+        text-align: left;
+        align-self: flex-start;   
+    }
+
+    /* bot message */
+    .botMsg {
+        background-color: #38A1F3;
+        text-align: left;
+        color: #fff;
+        align-self: flex-start;
+    }
+
+    /* user message */
+    .selfMsg {
+        background-color: #eeeeee;
+        position: relative;
+        text-align: right;
+        margin-bottom: 10px;
+        padding: 10px 10px 10px 12px;
+        border-radius: 20px;
+        max-width: 80%;
+        height: 100%;
+    }
+
+    /* Reaction user styling */
+    .reactionUser {
+        transform: translateX(-10%);
+    }
+
+    /* Reaction button styling */
+    .message-reaction-btn {
+        font-size: 16px;
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 3px;
+        border-radius: 4px;
+    }
+
+    .message-reaction-btn:hover {
+        transform: scale(1.2);
+        background-color: rgba(0, 0, 0, 0.1);
+    }
+
+    /* Reaction container styling */
+    .message-reactions {
+        display: flex;
+        gap: 4px;
+        flex-wrap: wrap;
+        margin-top: 4px;
+    }
+
+    /* Reaction badge styling */
+    .reaction-badge {
+        background-color: transparent;
+        border-radius: 12px;
+        padding: 2px 8px;
+        font-size: 0.9em;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    /* -------------------------------------------------------- */
+    /* bot typing indicator                                     */
+    /* -------------------------------------------------------- */ 
+
+    /* typing indicator div, styling, animation */
+    .typing-indicator {
+        display: flex;
+        gap: 4px;
+        padding: 4px 8px;
+    }
+
+    /* Typing indicator dots styling */
+    .typing-indicator span {
+        width: 8px;
+        height: 8px;
+        background-color: #fff;
+        border-radius: 50%;
+        animation: typing 1s infinite ease-in-out;
+    }
+
+    /* Typing indicator dot animation delay */
+    .typing-indicator span:nth-child(1) {
+        animation-delay: 0.2s;
+    }
+
+    /* Typing indicator dot animation delay */
+    .typing-indicator span:nth-child(2) {
+        animation-delay: 0.3s;
+    }
+
+    /* Typing indicator dot animation delay */
+    .typing-indicator span:nth-child(3) {
+        animation-delay: 0.4s;
+    }
+
+    /* Typing animation */
+    @keyframes typing {
+        0%, 100% {
+            transform: translateY(0);
+        }
+        50% {
+            transform: translateY(-5px);
+        }
+    }
+
+    /* Typing container styling */
+    .typing {
+        max-width: 60px;
+        padding: 8px;
+    }
+
+
+    /* -------------------------------------------------------- */
+    /* user input and message styles                            */
+    /* -------------------------------------------------------- */
+
+    /* input box div containing subelements*/
+    .inputBox {
+        display: flex;
+        align-items: center;
+        margin-top: 1rem;    
+    }
+
+    /* input box styling */
+    .typeInputBox {
+        flex: 1;
+        display: flex;
+        align-items: center;
+    }
+
+    /* user message styling */
+    .selfText {
+        background: lightgray;
+        display: inline-block;
+        position: relative;
+        left: 100%;
+        transform: translateX(-100%);
+        text-align: right;
+        margin-bottom: 5px;
+        padding: 10px 10px 10px 12px;
+        border-radius: 20px;
+        max-width: 80%;
+        height: 100%;
+    }
+
+    /* input form styling */
+    input[type="text"] {
+        flex: 1;
+        padding: 0.5rem;
+        border: 2px solid lightgrey;
+        border-radius: 0.5rem;
+        margin-right: 0.5rem;
+    }
+
+    /* input button styling */
+    input[type=button] {
+        background-color: #38A1F3;
+        border: none;
+        color: white;
+        font-size: 18px;
+        padding: 5px 12px;
+        text-decoration: none;
+        margin: 4px 2px;
+        cursor: pointer;
+    }
+    button[type="button"] {
+        background-color: lightgrey;
+        border: none;
+        padding: 0.5rem 1rem;
+        border-radius: 0.5rem;
+        cursor: pointer;
+    }
+    
+    /* styling for scrollbar */
+    .chatMessages::-webkit-scrollbar {
+        width: 1vw;
+    }    
+    .chatMessages::-webkit-scrollbar-thumb {
+        background: #9e9e9e;    
+        border-radius: 2vw;
+    }
+
+    .chatMessages::-webkit-scrollbar-track {
+        background: #ddd;
+        border-radius: 0 0 2vw 2vw;
+    }
+
+    /* Chat container styles */
+    #chatMessages {
+        position: relative;
+        height: 400px;
+        overflow-y: auto;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        background-color: white;
+    }
+
+    
+    /* -------------------------------------------------------- */
+    /* speech bubble styles                                     */
+    /* -------------------------------------------------------- */
+
+    /* canvas { display: block; } */
+    #game-container {
+        position: relative;
+    }
+    
+    #instructions {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        color: #000;
+        font-family: Arial, sans-serif;
+        background: rgba(255,255,255,0.8);
+        padding: 10px;
+        border-radius: 5px;
+        border: 2px solid #000;
+        z-index: 100;
+    }
+
+    #coordinates {
+        position: absolute;
+        top: 120px;
+        left: 10px;
+        color: #000;
+        font-family: Arial, sans-serif;
+        background: rgba(255,255,255,0.8);
+        padding: 10px;
+        border-radius: 5px;
+        border: 2px solid #000;
+        width: max-content;
+        z-index: 100;
+    }
+    #chat-input {
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 8px;
+        width: 300px;
+        border: 2px solid #000;
+        border-radius: 20px;
+        font-family: Arial, sans-serif;
+        background: rgba(255,255,255,0.9);
+    }
+    #speech-bubble {
+        position: fixed;
+        background: rgba(255, 255, 255, 0.8);
+        padding: 10px;
+        border-radius: 10px;
+        border: 2px solid black;
+        max-width: 200px;
+        text-align: center;
+        word-wrap: break-word;
+        transform: translate(-10%, 0); /* Adjusted to account for left arrow */
+        --arrow-color: rgba(255, 255, 255, 0.8);
+        z-index: 100;
+    }
+
+    #speech-bubble.animate {
+        animation: bubbleAppear 0.3s ease-out forwards,
+                    bubbleDisappear 0.5s ease-in-out forwards;
+        animation-delay: 0s, 3s;
+    }
+
+    #speech-bubble:after {
+        content: '';
+        position: absolute;
+        bottom: -10px;
+        left: 20px; /* Position arrow 20px from left */
+        transform: translateX(0); /* Remove center transform */
+        border-width: 10px 10px 0;
+        border-style: solid;
+        border-color: var(--arrow-color) transparent transparent;
+    }
+
+    .speech-bubble {
+        display: none;
+        position: fixed;
+        background: rgb(255, 255, 255, .8);
+        border: 2px solid black;
+        padding: 10px;
+        border-radius: 10px;
+        max-width: 200px;
+        text-align: center;
+        word-wrap: break-word;
+        transform: translate(-10%, 0); /* Adjusted to account for left arrow */
+        z-index: 100;
+    }
+
+    .speech-bubble:after {
+        content: '';
+        position: absolute;
+        bottom: -10px;
+        left: 20px; /* Position arrow 20px from left */
+        transform: translateX(0); /* Remove center transform */
+        border-width: 10px 10px 0;
+        border-style: solid;
+        border-color: rgb(255, 255, 255, .8) transparent transparent;
+    }
+
+        
+    @keyframes bubbleAppear {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    @keyframes bubbleDisappear {
+        from {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        to {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+    }
+
+
+            
+    #chatinput {
+        position: absolute;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 30%;   
+    }
+
+    #game-container {
+        opacity: 0;
+        transition: opacity 0.5s ease-in;
+    }
+
+    #game-container.loaded {
+        opacity: 1;
+    }
+
+    .loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: #f0f0f0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+        transition: opacity 0.5s ease-out;
+    }
+
+    .loading-overlay.hidden {
+        opacity: 0;
+        pointer-events: none;
+    }
+
+
+</style>
+
+{{ endblock }}

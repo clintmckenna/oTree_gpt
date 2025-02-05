@@ -1,0 +1,734 @@
+{{ extends "threejs/Page.html" }}
+
+{{ block styles }}
+{{ endblock }}
+
+
+{{ block scripts }}
+
+<!-- load external js scripts -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+<script>
+
+    // Global variables for scene and characters
+    let scene, camera, renderer;
+    let character, npcRobot, npcRobot2, npcRobot3;
+    let spawnedNPCs = [];  // Keep track of spawned NPCs
+    let isSceneReady = false;  // New flag to control rendering
+
+    // vars for threejs scene
+    var roomLength = js_vars.roomLength;
+    var roomWidth = js_vars.roomWidth;
+    var roomHeight = js_vars.roomHeight;
+
+    // npc distance vars
+    var npcJitter = 3; // dist of random npc movement each tick
+    var npcPersonalSpace = 20; // dist of distance between npcs at start
+
+    // how many seconds to wait before triggering position check
+    var botSleepTime = 1;
+
+    // chat divs
+    const chatInput = document.getElementById('chatinput');
+    const speechBubble = document.getElementById('speech-bubble');
+    const npcSpeechBubble = document.getElementById('npc-speech-bubble');
+    const npc2SpeechBubble = document.getElementById('npc2-speech-bubble');
+    const npc3SpeechBubble = document.getElementById('npc3-speech-bubble');
+    let npcSpeechTimeout, npc2SpeechTimeout, npc3SpeechTimeout;
+
+    // run this when page loads
+    document.addEventListener('DOMContentLoaded', function() {
+        // Prevent form submission when pressing enter or clicking buttons
+        const form = document.querySelector('form');
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+        });
+        
+        // delay chat input focus
+        setTimeout(() => {
+            // const chatInput = document.getElementById('chatinput');
+            chatInput.focus();
+        }, 100);
+
+        // start listening for live page functions
+        liveSend({'event': 'phase', 'phase': 0});
+        
+    });
+
+    // run sendMsg when enter key is pressed
+    // var chatInput = document.getElementById('chatinput');    
+    chatInput.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter') {
+            sendMsg();
+        }
+    });
+
+    // function to send user message to server
+    function sendMsg() {
+
+        // grab text input
+        const text = chatInput.value.trim();
+
+        // also get player coords
+
+        if (character) {
+            currentPos = {
+                x: character.position.x.toFixed(2),
+                y: character.position.y.toFixed(2),
+                z: character.position.z.toFixed(2)
+            }
+            console.log('Player position:', currentPos);
+        }
+
+        if (text) {
+            liveSend({'event': 'text', 'text': text, 'pos': currentPos});
+            // clear the input field
+            chatInput.value = '';
+        }
+    }
+
+
+    // function to add speech bubble over character
+    function addSpeechBubble(sender, text) {
+        
+        // get div based on sender
+        let sb;
+        let timeOut;
+        if (sender == 'Red') {
+            sb = npcSpeechBubble;
+            timeOut = 3500;
+        } else if (sender == 'Green') {
+            sb = npc2SpeechBubble;
+            timeOut = 3500;
+        } else if (sender == 'Black') {
+            sb = npc3SpeechBubble;
+            timeOut = 3500;
+        } else if (sender == 'Self') {
+            sb = speechBubble;
+            timeOut = 1000;
+        } else {
+            console.log('Unknown sender:', sender);
+            return; // Exit if sender is not recognized
+        }
+
+        // add speech bubble over character
+        sb.style.display = 'block';
+        sb.textContent = text;
+        
+        // Remove the animate class (if it exists) and force a reflow
+        sb.classList.remove('animate');
+        void sb.offsetWidth; // Force reflow
+        
+        // Add the animate class to trigger the animations
+        sb.classList.add('animate');
+
+        // Hide the speech bubble after animation completes (3.5s = 3s delay + 0.5s animation)
+        setTimeout(() => {
+            sb.style.display = 'none';
+            sb.classList.remove('animate');
+        }, timeOut);
+
+    }
+
+
+    // function for live receiving from server
+    function liveRecv(data) {
+
+        let event = data["event"];
+
+        // Handle text messages send by humans
+        if (event == 'text') {
+
+            // grab data from server
+            const messageId = data.msgId;
+            // const botMsgId = data.botMsgId;
+            const selfText = data.selfText;
+            // const botText = data.botText;
+            const tone = data.tone;
+            const sender = data.sender;
+            // const currentPlayer = data.currentPlayer;
+            const phase = data.phase;
+            const target = data.target;
+
+            // get chat elements
+            // const chatInput = document.getElementById('chatinput');
+            // const chatMessages = document.getElementById('chatMessages');
+            // const toneSpan = document.getElementById('toneSpan');
+            
+
+            // trigger bot response
+            liveSend({'event': 'botMsg', 'botId': target});
+
+            // populate speech bubble
+            addSpeechBubble('Self', selfText);
+
+        // handle bot messages
+        } else if (event == 'botText') {
+
+            // grab data from server
+            // const messageId = data.msgId;
+            const botMsgId = data.botMsgId;
+            const text = data.text;
+            // const botText = data.botText;
+            const tone = data.tone;
+            const sender = data.sender;
+            // const currentPlayer = data.currentPlayer;
+            const phase = data.phase;
+            // const target = data.target;
+            
+
+            // add bot responses here
+
+            // add speech bubble over npc
+            addSpeechBubble(sender, text);
+
+
+
+            // increment phase
+            // liveSend({'event': 'phase', 'phase': phase + 1});
+
+        // handle phase logic
+        } else if (event == 'phase') {
+            
+            // get phase
+            const phase = data["phase"];
+            console.log('Phase event received:', phase);
+
+            // if phase is 0, initialize positions
+            if (phase == 1) {
+                // Parse the position data from server
+                const playerPos = JSON.parse(data.posPlayer);
+                const redPos = JSON.parse(data.posRed);
+                const blackPos = JSON.parse(data.posBlack);
+                const greenPos = JSON.parse(data.posGreen);
+
+                console.log("Received positions from server:");
+                console.log("Red:", redPos);
+                console.log("Black:", blackPos);
+                console.log("Green:", greenPos);
+                console.log("Player:", playerPos);
+
+                // Update player character position
+                character.position.set(playerPos.x, playerPos.y, playerPos.z);
+                console.log("Updated player position:", character.position);
+
+                // Update NPC positions
+                npcRobot.position.set(redPos.x, redPos.y, redPos.z);      // Red NPC
+                console.log("Updated red NPC position:", npcRobot.position);
+                
+                npcRobot2.position.set(greenPos.x, greenPos.y, greenPos.z); // Green NPC
+                console.log("Updated green NPC position:", npcRobot2.position);
+                
+                npcRobot3.position.set(blackPos.x, blackPos.y, blackPos.z); // Black NPC
+                console.log("Updated black NPC position:", npcRobot3.position);
+
+                console.log('Updated all character positions from server data');
+
+                // Show the scene after positions are set
+                setTimeout(() => {
+                    isSceneReady = true;  // Allow rendering to begin
+                    
+                    // Update camera position once before showing scene
+                    const cameraOffset = 35;
+                    const angleOffset = Math.PI / 1;
+                    camera.position.x = character.position.x + cameraOffset * Math.sin(angleOffset);
+                    camera.position.z = character.position.z + cameraOffset * Math.cos(angleOffset);
+                    camera.position.y = 30;
+                    camera.lookAt(character.position);
+                    
+                    // Show the scene
+                    document.querySelector('.loading-overlay').classList.add('hidden');
+                    document.getElementById('game-container').classList.add('loaded');
+                }, 100);
+
+
+                // log positions every x seconds
+                console.log('Setting up bot message checks...');                
+                const intervalId = setInterval(() => {
+                        setTimeout(() => {
+                            console.log('Regular interval check - logging positions...');
+                            
+                            // grab player character position
+                            if (character) {
+                                currentPos = {
+                                    x: character.position.x.toFixed(2),
+                                    y: character.position.y.toFixed(2),
+                                    z: character.position.z.toFixed(2)
+                                }
+                                console.log('Player position:', currentPos);
+                            }
+                            // send coords to server
+                            liveSend({'event': 'posCheck', 'pos':currentPos});
+
+                        }, 1000);
+                    }, botSleepTime*1000);
+
+            // for now, dont assign extra meanings to phase changes
+            } else {
+
+            }
+        }
+    }
+
+    // threejs game code
+    // Only initialize if not already done
+    if (!window.gameInitialized) {
+        window.gameInitialized = true;
+        
+        (function() {
+            // Remove any existing canvases first
+            const existingCanvas = document.querySelector('#game-container canvas');
+            if (existingCanvas) {
+                existingCanvas.remove();
+            }
+            
+            // Create scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xf0f0f0);
+            
+            // Add lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
+            directionalLight.position.set(10, 20, 10);
+            scene.add(directionalLight);
+
+            // Create camera
+            camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 1, 1000);
+            camera.position.set(-30, 30, -30);  
+            camera.lookAt(-4, 0, 0);  
+            camera.rotation.order = 'YXZ';
+            camera.rotation.x = -Math.PI / 2;  
+
+            // Create renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.getElementById('game-container').appendChild(renderer.domElement);
+
+            // Materials
+            const outlineMaterial = new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 2 });
+            const whiteMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0xf0f0f0,
+                polygonOffset: true,
+                polygonOffsetFactor: 1,
+                polygonOffsetUnits: 1
+            });
+            const floorMaterial = new THREE.MeshBasicMaterial({ color: 0xf0f0f0 });
+
+            // Floor (rectangular)
+            const floorShape = new THREE.Shape();
+            floorShape.moveTo(-roomLength/2, -roomWidth/2);
+            floorShape.lineTo(roomLength/2, -roomWidth/2);
+            floorShape.lineTo(roomLength/2, roomWidth/2);
+            floorShape.lineTo(-roomLength/2, roomWidth/2);
+            floorShape.lineTo(-roomLength/2, -roomWidth/2);
+
+            const floorGeometry = new THREE.ShapeGeometry(floorShape);
+            const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+            floor.rotation.x = -Math.PI / 2;
+            scene.add(floor);
+
+            // Floor outline
+            const floorEdges = new THREE.EdgesGeometry(floor.geometry);
+            const floorLines = new THREE.LineSegments(floorEdges, outlineMaterial);
+            floorLines.rotation.x = -Math.PI / 2;
+            scene.add(floorLines);
+
+            // Walls (rectangular room)
+            function createWallWithOutline(width, height, position, rotation = { x: 0, y: 0, z: 0 }) {
+                const wallGeometry = new THREE.PlaneGeometry(width, height);
+                const wall = new THREE.Mesh(wallGeometry, whiteMaterial);
+                const wallEdges = new THREE.EdgesGeometry(wallGeometry);
+                const wallLines = new THREE.LineSegments(wallEdges, outlineMaterial);
+                
+                wall.position.set(position.x, position.z, -position.y);
+                wall.rotation.set(rotation.x, rotation.y, rotation.z);
+                wallLines.position.set(position.x, position.z, -position.y);
+                wallLines.rotation.set(rotation.x, rotation.y, rotation.z);
+                
+                wallLines.renderOrder = 1;
+                wall.renderOrder = 0;
+                
+                scene.add(wall);
+                scene.add(wallLines);
+            }
+
+            // Create walls for rectangular room
+            createWallWithOutline(roomLength, roomHeight, { x: 0, y: roomWidth/2, z: roomHeight/2 }); // Back wall
+            // Front wall is open
+            createWallWithOutline(roomWidth, roomHeight, { x: -roomLength/2, y: 0, z: roomHeight/2 }, { x: 0, y: Math.PI / 2, z: 0 }); // Left wall
+            createWallWithOutline(roomWidth, roomHeight, { x: roomLength/2, y: 0, z: roomHeight/2 }, { x: 0, y: Math.PI / 2, z: 0 }); // Right wall
+            
+            // Robot character
+            function createRobot(scale = 1, color = 0x4a90e2) {
+                const robot = new THREE.Group();
+                
+                const body = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.6 * scale, 0.8 * scale, 0.4 * scale),
+                    new THREE.MeshBasicMaterial({ color: color })
+                );
+                const bodyLines = new THREE.LineSegments(
+                    new THREE.EdgesGeometry(body.geometry),
+                    outlineMaterial
+                );
+                robot.add(body);
+                robot.add(bodyLines);
+                
+                const head = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.4 * scale, 0.4 * scale, 0.4 * scale),
+                    new THREE.MeshBasicMaterial({ color: color })
+                );
+                const headLines = new THREE.LineSegments(
+                    new THREE.EdgesGeometry(head.geometry),
+                    outlineMaterial
+                );
+                head.position.y = 0.6 * scale;
+                headLines.position.y = 0.6 * scale;
+                robot.add(head);
+                robot.add(headLines);
+                
+                return robot;
+            }
+
+            character = createRobot(2.5);  
+            scene.add(character);
+
+            // Create NPCs
+            npcRobot = createRobot(2.5, 0xff0000);  // Red color
+            scene.add(npcRobot);
+            spawnedNPCs.push(npcRobot);
+            
+            npcRobot2 = createRobot(2.5, 0x00ff00);  // Green color
+            scene.add(npcRobot2);
+            spawnedNPCs.push(npcRobot2);
+            
+            npcRobot3 = createRobot(2.5, 0x4A4A4A);  // black charcoal color
+            scene.add(npcRobot3);
+            spawnedNPCs.push(npcRobot3);
+
+            // Create distance lines
+            const lineGeometry = new THREE.BufferGeometry();
+            const lineMaterial = new THREE.LineBasicMaterial({ color: 0xff0000 });
+            const distanceLine = new THREE.Line(lineGeometry, lineMaterial);
+            distanceLine.visible = js_vars.debug;
+            scene.add(distanceLine);
+
+            const lineGeometry2 = new THREE.BufferGeometry();
+            const lineMaterial2 = new THREE.LineBasicMaterial({ color: 0x00ff00 });
+            const distanceLine2 = new THREE.Line(lineGeometry2, lineMaterial2);
+            distanceLine2.visible = js_vars.debug;
+            scene.add(distanceLine2);
+
+            const lineGeometry3 = new THREE.BufferGeometry();
+            const lineMaterial3 = new THREE.LineBasicMaterial({ color: 0x4A4A4A });
+            const distanceLine3 = new THREE.Line(lineGeometry3, lineMaterial3);
+            distanceLine3.visible = js_vars.debug;
+            scene.add(distanceLine3);
+
+            function updateDistanceLine() {
+                if (!js_vars.debug) {
+                    return;
+                }
+                
+                // Center mass is at y=1.25 (half of 2.5 scale)
+                const centerMassY = 1.25;
+                
+                // Update red robot distance line
+                distanceLine.geometry.setFromPoints([
+                    new THREE.Vector3(character.position.x, centerMassY, character.position.z),
+                    new THREE.Vector3(npcRobot.position.x, centerMassY, npcRobot.position.z)
+                ]);
+
+                // Update green robot distance line
+                distanceLine2.geometry.setFromPoints([
+                    new THREE.Vector3(character.position.x, centerMassY, character.position.z),
+                    new THREE.Vector3(npcRobot2.position.x, centerMassY, npcRobot2.position.z)
+                ]);
+
+                // Update black robot distance line
+                distanceLine3.geometry.setFromPoints([
+                    new THREE.Vector3(character.position.x, centerMassY, character.position.z),
+                    new THREE.Vector3(npcRobot3.position.x, centerMassY, npcRobot3.position.z)
+                ]);
+            }
+
+            // Timer setup
+            const startTime = Date.now();
+
+            function formatTime(milliseconds) {
+                const minutes = Math.floor(milliseconds / 60000);
+                const seconds = Math.floor((milliseconds % 60000) / 1000);
+                const ms = Math.floor(milliseconds % 1000 / 100);
+
+                return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}:${ms}`;
+            }
+
+            function updateCoordinates() {
+                const coordinatesDiv = document.getElementById('coordinates');
+                if (!js_vars.debug) {
+                    coordinatesDiv.style.display = 'none';
+                    return;
+                }
+                coordinatesDiv.style.display = 'block';
+                
+                // Calculate elapsed time
+                const elapsedTime = formatTime(Date.now() - startTime);
+                
+                // Calculate Euclidean distances
+                const distanceToRed = Math.sqrt(
+                    Math.pow(character.position.x - npcRobot.position.x, 2) +
+                    Math.pow(character.position.z - npcRobot.position.z, 2) +
+                    Math.pow(character.position.y - npcRobot.position.y, 2)
+                );
+
+                const distanceToGreen = Math.sqrt(
+                    Math.pow(character.position.x - npcRobot2.position.x, 2) +
+                    Math.pow(character.position.z - npcRobot2.position.z, 2) +
+                    Math.pow(character.position.y - npcRobot2.position.y, 2)
+                );
+
+                const distanceToBlack = Math.sqrt(
+                    Math.pow(character.position.x - npcRobot3.position.x, 2) +
+                    Math.pow(character.position.z - npcRobot3.position.z, 2) +
+                    Math.pow(character.position.y - npcRobot3.position.y, 2)
+                );
+                
+                coordinatesDiv.innerHTML = `
+                    Time: ${elapsedTime}<br>
+                    x: ${character.position.x.toFixed(2)}<br>
+                    y: ${character.position.z.toFixed(2)}<br>
+                    z: ${character.position.y.toFixed(2)}<br>
+                    Distance to Red: ${distanceToRed.toFixed(2)}<br>
+                    Distance to Green: ${distanceToGreen.toFixed(2)}<br>
+                    Distance to Black: ${distanceToBlack.toFixed(2)}
+                `;
+            }
+
+            // Function to update both speech bubbles positions
+            function updateSpeechBubblePositions() {
+                const maxDistance = 20; // Maximum distance for visibility
+                const minDistance = 5;  // Distance for full opacity
+                
+                //offset for speech bubbles
+                const speechBubbleOffsetY = 140;
+
+                // Update player speech bubble
+                if (speechBubble.style.display === 'block') {
+                    const vector = new THREE.Vector3();
+                    character.getWorldPosition(vector);
+                    vector.project(camera);
+                    
+                    const x = (vector.x * .5 + .5) * window.innerWidth - 10;
+                    const y = (-(vector.y * .5) + .5) * window.innerHeight - speechBubbleOffsetY;
+                    
+                    speechBubble.style.left = x + 'px';
+                    speechBubble.style.top = y + 'px';
+                    speechBubble.style.zIndex = '100';
+                    speechBubble.style.background = 'rgba(255, 255, 255, 0.8)';
+                    speechBubble.style.borderColor = 'rgba(0, 0, 0, 1)';
+                    speechBubble.style.setProperty('--arrow-color', 'rgba(255, 255, 255, 0.8)');
+                    speechBubble.style.color = 'rgba(0, 0, 0, 1)';
+                }
+                
+
+                // Update NPC speech bubbles
+                if (npcSpeechBubble.style.display === 'block') {
+                    const vector = new THREE.Vector3();
+                    npcRobot.getWorldPosition(vector);
+                    vector.project(camera);
+                    
+                    const x = (vector.x * .5 + .5) * window.innerWidth- 10;
+                    const y = (-(vector.y * .5) + .5) * window.innerHeight - speechBubbleOffsetY;
+                    
+                    // Calculate distance and opacity for red robot
+                    const distanceToRed = character.position.distanceTo(npcRobot.position);
+                    let opacityRed = 1 - Math.min(Math.max((distanceToRed - minDistance) / (maxDistance - minDistance), 0), 1);
+                    opacityRed = Math.max(0.1, opacityRed); // Keep a minimum opacity of 0.1
+                    
+                    npcSpeechBubble.style.left = x + 'px';
+                    npcSpeechBubble.style.top = y + 'px';
+                    npcSpeechBubble.style.background = `rgba(255, 255, 255, ${opacityRed * 0.8})`;
+                    npcSpeechBubble.style.borderColor = `rgba(0, 0, 0, ${opacityRed})`;
+                    npcSpeechBubble.style.setProperty('--arrow-color', `rgba(255, 255, 255, ${opacityRed * 0.8})`);
+                    npcSpeechBubble.style.color = `rgba(0, 0, 0, ${opacityRed})`;
+                }
+
+                if (npc2SpeechBubble.style.display === 'block') {
+                    const vector = new THREE.Vector3();
+                    npcRobot2.getWorldPosition(vector);
+                    vector.project(camera);
+                    
+                    const x = (vector.x * .5 + .5) * window.innerWidth - 10;
+                    const y = (-(vector.y * .5) + .5) * window.innerHeight - speechBubbleOffsetY;
+                    
+                    // Calculate distance and opacity for green robot
+                    const distanceToGreen = character.position.distanceTo(npcRobot2.position);
+                    let opacityGreen = 1 - Math.min(Math.max((distanceToGreen - minDistance) / (maxDistance - minDistance), 0), 1);
+                    opacityGreen = Math.max(0.1, opacityGreen); // Keep a minimum opacity of 0.1
+                    
+                    npc2SpeechBubble.style.left = x + 'px';
+                    npc2SpeechBubble.style.top = y + 'px';
+                    npc2SpeechBubble.style.background = `rgba(255, 255, 255, ${opacityGreen * 0.8})`;
+                    npc2SpeechBubble.style.borderColor = `rgba(0, 0, 0, ${opacityGreen})`;
+                    npc2SpeechBubble.style.setProperty('--arrow-color', `rgba(255, 255, 255, ${opacityGreen * 0.8})`);
+                    npc2SpeechBubble.style.color = `rgba(0, 0, 0, ${opacityGreen})`;
+                }
+
+                if (npc3SpeechBubble.style.display === 'block') {
+                    const vector = new THREE.Vector3();
+                    npcRobot3.getWorldPosition(vector);
+                    vector.project(camera);
+                    
+                    const x = (vector.x * .5 + .5) * window.innerWidth - 10;
+                    const y = (-(vector.y * .5) + .5) * window.innerHeight - speechBubbleOffsetY;
+                    
+                    // Calculate distance and opacity for black robot
+                    const distanceToBlack = character.position.distanceTo(npcRobot3.position);
+                    let opacityBlack = 1 - Math.min(Math.max((distanceToBlack - minDistance) / (maxDistance - minDistance), 0), 1);
+                    opacityBlack = Math.max(0.1, opacityBlack); // Keep a minimum opacity of 0.1
+                    
+                    npc3SpeechBubble.style.left = x + 'px';
+                    npc3SpeechBubble.style.top = y + 'px';
+                    npc3SpeechBubble.style.background = `rgba(255, 255, 255, ${opacityBlack * 0.8})`;
+                    npc3SpeechBubble.style.borderColor = `rgba(0, 0, 0, ${opacityBlack})`;
+                    npc3SpeechBubble.style.setProperty('--arrow-color', `rgba(255, 255, 255, ${opacityBlack * 0.8})`);
+                    npc3SpeechBubble.style.color = `rgba(0, 0, 0, ${opacityBlack})`;
+                }
+            }
+
+            // Movement parameters
+            const npcAttraction = .8; // -1 to 1: negative for repulsion, positive for attraction
+            const playerAttraction = -.8; // -1 to 1: negative for repulsion, positive for attraction
+            const jitterAmount = 5; // Random variation in final position (in units)
+            const personalSpace = 3; // Minimum distance NPCs try to maintain from each other
+
+            chatInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault(); // Prevent form submission
+                    if (this.value.trim() !== '') {
+                        // Show speech bubble
+                        speechBubble.textContent = this.value;
+                        speechBubble.style.display = 'block';
+                        
+                        // Clear previous timeout if exists
+                        if (speechTimeout) clearTimeout(speechTimeout);
+                        
+                        // Hide speech bubble after 3 seconds
+                        speechTimeout = setTimeout(() => {
+                            speechBubble.style.display = 'none';
+                        }, 3000);
+                        
+                        // Clear input
+                        this.value = '';
+                    }
+                }
+            });
+
+            function moveCharacter() {
+                let dx = 0, dz = 0;
+
+                if (keys.ArrowUp) dz = -speed;
+                if (keys.ArrowDown) dz = speed;
+                if (keys.ArrowLeft) dx = -speed;
+                if (keys.ArrowRight) dx = speed;
+
+                if (dx !== 0 || dz !== 0) {
+                    character.position.x += dx;
+                    character.position.z += dz;
+                    
+                    // Boundary checks
+                    character.position.x = Math.max(-roomLength/2 + 1, Math.min(roomLength/2 - 1, character.position.x));
+                    character.position.z = Math.max(-roomWidth/2 + 1, Math.min(roomWidth/2 - 1, character.position.z));
+                }
+            }
+
+            // Movement controls
+            const speed = 0.2;
+            const keys = { 
+                ArrowUp: false, 
+                ArrowDown: false, 
+                ArrowLeft: false, 
+                ArrowRight: false
+            };
+
+            window.addEventListener('keydown', (e) => {
+                if (keys.hasOwnProperty(e.key)) {
+                    e.preventDefault(); // Prevent scrolling
+                    keys[e.key] = true;
+                }
+            });
+
+            window.addEventListener('keyup', (e) => {
+                if (keys.hasOwnProperty(e.key)) {
+                    keys[e.key] = false;
+                }
+            });
+
+            window.addEventListener('resize', () => {
+                const width = window.innerWidth;
+                const height = window.innerHeight;
+                
+                camera.aspect = width / height;
+                camera.updateProjectionMatrix();
+                
+                renderer.setSize(width, height);
+            });
+
+            function animate() {
+                requestAnimationFrame(animate);
+                
+                // Only render if scene is ready
+                if (!isSceneReady) return;
+
+                const cameraOffset = 35;  
+                const angleOffset = Math.PI / 1;
+                // const angleOffset = 0;
+
+                camera.position.x = character.position.x + cameraOffset * Math.sin(angleOffset);
+                camera.position.y = 30;
+                camera.position.z = character.position.z - cameraOffset * Math.cos(angleOffset);
+                camera.lookAt(character.position);
+
+                moveCharacter();
+                updateCoordinates();
+                updateSpeechBubblePositions();
+                updateDistanceLine();
+
+                renderer.render(scene, camera);
+            }
+
+            animate();
+        })();
+    }
+</script>
+
+
+{{ endblock }}
+
+{{ block content }}
+
+<div class="loading-overlay">
+    <div>Loading environment...</div>
+</div>
+
+<div id="game-container"></div>
+<div id="instructions">
+    <span class='timer'>
+        Time Remaining: <span class='otree-timer__time-left'></span>
+    </span>
+    <br>
+    Use Arrow keys to move the robot.
+    <br>
+    Type and press Enter to chat.
+</div>
+
+<div id="coordinates" {% if not C.DEBUG %}style="display: none;"{% endif %}></div>
+<div id="speech-bubble"></div>
+<div id="npc-speech-bubble" class="speech-bubble"></div>
+<div id="npc2-speech-bubble" class="speech-bubble"></div>
+<div id="npc3-speech-bubble" class="speech-bubble"></div>
+<input type="text" id="chatinput" placeholder="Type to chat..." maxlength="50">
+
+{{ endblock }}

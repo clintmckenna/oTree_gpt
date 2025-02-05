@@ -64,6 +64,16 @@ In the previous experiments, the LLM agent message is triggered when the partici
 <img src="./_static/multi1.png" style="display: block; width: 60%">
 <img src="./_static/multi2.png" style="display: block; width: 60%">
 
+## threejs
+
+This experiment demonstrates how you can use three.js to create a 3D environment and surface LLM data based on behavior in the environment. Here, we demonstrate how the player character must solicit information from different agents to piece together details of a crime that had occurred.
+
+<img src="./_static/threejs.gif" style="display: block; width: 60%">
+
+In this example, the agent's conversation cue will only trigger when the participant character is close enough in a 3d space (10 units in this case). This template can be useful for games where participants must gather information from different sources to piece together information (e.g. jigsaw classroom). It may also be useful for testing agent based models of conversation behavior with humans interacting with NPCs.
+
+More information about three.js can be found [here](https://threejs.org/).
+
 ## Experiment Settings
 
 Within each experiment, you can adjust the settings that are specified in the Constants model within __init__.py. You can adjust things like the system prompt, the LLM model, and the temperature. You can also specify API keys for either LLM services or other features you are plugging in, like transcription or Amazon S3 storage.
