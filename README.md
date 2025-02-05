@@ -8,7 +8,7 @@ I am continuously working on adding more templates. Here is the current list, in
 - [chat_voice](#chat_voice)
 - [dictator_game](#dictator_game)
 - [chat_multiple_agents](#chat_multiple_agents)
-
+- [threejs](#threejs)
 
 ## chat_simple
 
@@ -68,7 +68,7 @@ In the previous experiments, the LLM agent message is triggered when the partici
 
 This experiment demonstrates how you can use three.js to create a 3D environment and surface LLM data based on behavior in the environment. Here, we demonstrate how the player character must solicit information from different agents to piece together details of a crime that had occurred.
 
-<img src="./_static/threejs.gif" style="display: block; width: 60%">
+<img src="./_static/threejs.gif" style="display: block; width: 80%">
 
 In this example, the agent's conversation cue will only trigger when the participant character is close enough in a 3d space (10 units in this case). This template can be useful for games where participants must gather information from different sources to piece together information (e.g. jigsaw classroom). It may also be useful for testing agent based models of conversation behavior with humans interacting with NPCs.
 
