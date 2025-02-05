@@ -1,6 +1,8 @@
 # oTree GPT 
 
-This is a collection of templates for using large language model (LLM) agents in oTree behavioral experiments. I have updated this repository from previous verstions to use the LiteLLM package as a simple way to allow for multiple LLM services. I have also moved the chat processing to the server via live pages, which adds stability in saving all data to the database and allows for features like syncing across multiple human participants. Please feel free to leave any feedback or open an issue if you spot a problem.
+This is a collection of templates for using large language model (LLM) agents in oTree behavioral experiments. I originally updated this repository from previous verstions to use the LiteLLM package as a simple way to allow for multiple LLM services. Unfortunately, I could not resolve some dependency conflicts with oTree, so I reverted back to using the OpenAI package. If you desire a different commercial service, let me know and I can help you implement it.
+
+Since previous versions, I have also moved the chat processing to the server via live pages, which adds stability in saving all data to the database and allows for features like syncing across multiple human participants. Please feel free to leave any feedback or open an issue if you spot a problem.
 
 I am continuously working on adding more templates. Here is the current list, increasing by complexity:
 - [chat_simple](#chat_simple)
