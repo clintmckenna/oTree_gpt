@@ -53,7 +53,7 @@ class C(BaseConstants):
     DEBUG = False
 
     ## openAI key
-    OPENAI_KEY = environ.get('CHATGPT_KEY')
+    OPENAI_KEY = environ.get('OPENAI_KEY')
 
     ## model
     MODEL = "gpt-4o-mini"

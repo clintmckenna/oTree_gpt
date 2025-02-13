@@ -38,7 +38,7 @@ class C(BaseConstants):
     BOT_TEMP = 1.0
     
     ## openAI key
-    OPENAI_KEY = environ.get('CHATGPT_KEY')
+    OPENAI_KEY = environ.get('OPENAI_KEY')
 
     ## model
     ## this is which gpt model to use, which have different prices and ability

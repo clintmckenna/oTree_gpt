@@ -46,7 +46,7 @@ class C(BaseConstants):
 
     # LLM vars
     ## openAI key
-    OPENAI_KEY = environ.get('CHATGPT_KEY')
+    OPENAI_KEY = environ.get('OPENAI_KEY')
 
     ## bot label and temperature
 
@@ -492,7 +492,7 @@ class chat(Page):
                         saveToS3('otree-gpt', filename, b64)
                     else:
                         # or save to static folder
-                        audioFilePath = f'_static/global/chat_voice/recordings/{filename}'
+                        audioFilePath = f'_static/chat_voice/recordings/{filename}'
                         with open(audioFilePath, 'wb') as f:
                             f.write(b64)
                 else:
@@ -590,14 +590,14 @@ class chat(Page):
                         audioURL = get_s3_url('otree-gpt', filename)
                         if not audioURL:
                             print("Failed to generate S3 URL, falling back to local storage")
-                            audioFilePath = f'_static/global/chat_voice/recordings/{filename}'
+                            audioFilePath = f'_static/chat_voice/recordings/{filename}'
                             with open(audioFilePath, 'wb') as f:
                                 f.write(audioDat)
                             audioURL = filename
                     else:
                         print("Failed to save to S3!")
                 else:
-                    audioFilePath = f'_static/global/chat_voice/recordings/{filename}'
+                    audioFilePath = f'_static/chat_voice/recordings/{filename}'
                     with open(audioFilePath, 'wb') as f:
                         f.write(audioDat)
                     audioURL = filename

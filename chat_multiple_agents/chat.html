@@ -119,7 +119,7 @@
             // create message html from subject input and insert into chatMessages
             let messageHtml = `
                 <div class="message selfMsg" id="${messageId}" data-author="${sender}">
-                    <strong>${sender} (You)<br></strong> ${selfText}
+                    <strong>You<br></strong> ${selfText}
                     ${js_vars.allow_reactions ? `
                     <div class="message-reaction-bar">
                         ${js_vars.emojis.map(emoji => 
