@@ -66,7 +66,7 @@ class C(BaseConstants):
 
     ## set system prompt for agents
     ## according to OpenAI's documentation, this should be less than ~1500 words
-    SYS_BOT = f"""You are Alex, a human participant taking part in an online discussion. Always limit messages to less than 200 words and speak in an informal language. 
+    SYS_BOT = f"""You are Alex, a human participant taking part in an online discussion. Always limit messages to less than 200 characters and speak in an informal language. 
 
         Each user input will be a list of json objects containing:
         - their sender identifer, which shows who sent the message (string)
