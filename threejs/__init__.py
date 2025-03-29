@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 import math
 
 doc = """
-LLM chat with multiple agents, based on chat_complex
+LLM chat in 3D environment using threejs
 """
 
 author = 'Clint McKenna clint@calsocial.org'
@@ -43,8 +43,8 @@ class C(BaseConstants):
     ROOM_LENGTH = 60
     ROOM_WIDTH = 40
     ROOM_HEIGHT = 14
-    NPC_JITTER = 3
-    NPC_PERSONAL_SPACE = 20
+    # NPC_JITTER = 3
+    # NPC_PERSONAL_SPACE = 20
     RED_POS = {'x': -20, 'y': 2, 'z': -8}
     BLACK_POS = {'x': 10, 'y': 2, 'z': 12}
     GREEN_POS = {'x': 17, 'y': 2, 'z': -5}
@@ -217,7 +217,7 @@ def initializeNPCPositions():
     roomLength = C.ROOM_LENGTH
     roomWidth = C.ROOM_WIDTH
     roomHeight = C.ROOM_HEIGHT
-    npcPersonalSpace = C.NPC_PERSONAL_SPACE
+    # npcPersonalSpace = C.NPC_PERSONAL_SPACE
     wallBuffer = 5  # Keep some distance from walls
 
     # Function for random player position
@@ -421,8 +421,8 @@ class chat(Page):
             roomLength = C.ROOM_LENGTH,
             roomWidth = C.ROOM_WIDTH,
             roomHeight = C.ROOM_HEIGHT,
-            npcPersonalSpace = C.NPC_PERSONAL_SPACE,
-            npcJitter = C.NPC_JITTER,
+            # npcPersonalSpace = C.NPC_PERSONAL_SPACE,
+            # npcJitter = C.NPC_JITTER,
             debug = C.DEBUG,
         )
 
@@ -530,6 +530,13 @@ class chat(Page):
                     botMsgId = botContent['msgId']
                     botMsg = {'role': 'assistant', 'content': botText}
                     
+                    # append to messages    
+                    messages.append(botMsg)
+                    
+                    # update cache
+                    player.cachedMessages = json.dumps(messages)
+
+                    # save to database
                     MessageData.create(
                         player=player,
                         sender=botId,
@@ -540,7 +547,6 @@ class chat(Page):
                         msgText=outputText,
                         target=botId
                     )
-                    messages.append(botMsg)
 
                     # return data to chat.html
                     return {player.id_in_group: dict(
