@@ -7,6 +7,9 @@ This is a collection of templates for using large language model (LLM) agents in
 
 Since previous versions, I have also moved the chat processing to the server via live pages, which adds stability in saving all data to the database and allows for features like syncing across multiple human participants. Please feel free to leave any feedback or open an issue if you spot a problem.
 
+Here is a video I made on an earlier version of the software, which might be helpful: [https://www.youtube.com/watch?v=IY_U2GYyIeo](https://www.youtube.com/watch?v=IY_U2GYyIeo)
+
+
 I am continuously working on adding more templates. Here is the current list, increasing by complexity:
 - [chat_simple](#chat_simple)
 - [chat_complex](#chat_complex)

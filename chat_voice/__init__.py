@@ -447,6 +447,7 @@ class chat(Page):
                 if not C.OPENAI_KEY:
                     print("ERROR: OpenAI API key is not set!")
                     yield {player.id_in_group: {'error': 'OpenAI API key is not configured'}}
+                    return
 
                 try:
                     
@@ -475,6 +476,7 @@ class chat(Page):
                 except Exception as e:
                     print("Error during transcription:", str(e))
                     yield {player.id_in_group: {'error': f'Transcription failed: {str(e)}'}}
+                    return
 
                 # randomize tone for each message
                 # tones = ['friendly', 'sarcastic', 'UNHINGED']
@@ -516,7 +518,7 @@ class chat(Page):
                 msg = {'role': 'user', 'content': json.dumps(content)}
 
                 # reload player in this DB session and save to database
-                local_player = Player.get(id=player.id)
+                local_player = Player.filter(id=player.id)[0]
                 MessageData.create(
                     player=local_player,
                     msgId=msgId,
