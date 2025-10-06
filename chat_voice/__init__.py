@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 import httpx
 import base64
 import boto3
-import aioboto3
+import asyncio
 
 doc = """
 Chat with voice via Whisper API and ElevenLabs. Based on chat_complex.
@@ -189,8 +189,14 @@ async def runVoiceAPI(inputMessage: str, voice_id: str) -> bytes:
 ########################################################
 # Amazon S3 Setup                                      #
 ########################################################
-
 # load s3 bucket environment
+s3_client = boto3.client(
+    's3',
+    aws_access_key_id=C.AMAZON_S3_KEY,
+    aws_secret_access_key=C.AMAZON_S3_SECRET,
+    region_name='us-east-2',
+)
+
 s3_signer = boto3.client(
     's3',
     aws_access_key_id=C.AMAZON_S3_KEY,
@@ -201,23 +207,20 @@ s3_signer = boto3.client(
 # save audio to s3 function
 async def saveToS3(bucket: str, filename: str, audio: bytes) -> bool:
     content_type = 'audio/mpeg' if filename.endswith('.mp3') else 'audio/webm'
-    try:
-        session = aioboto3.Session()
-        async with session.client(
-            's3',
-            aws_access_key_id=C.AMAZON_S3_KEY,
-            aws_secret_access_key=C.AMAZON_S3_SECRET,
-            region_name='us-east-2',
-        ) as s3:
-            await s3.put_object(
-                Bucket=bucket,
-                Key=filename,
-                Body=audio,
-                ContentType=content_type,
-                ContentDisposition='inline',
-                CacheControl='no-cache',
-            )
+
+    def _put():
+        s3_client.put_object(
+            Bucket=bucket,
+            Key=filename,
+            Body=audio,
+            ContentType=content_type,
+            ContentDisposition='inline',
+            CacheControl='no-cache',
+        )
         return True
+
+    try:
+        return await asyncio.to_thread(_put)
     except Exception as e:
         print(f'Error saving to S3: {e}')
         return False
