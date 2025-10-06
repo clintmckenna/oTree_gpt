@@ -189,6 +189,7 @@ async def runVoiceAPI(inputMessage: str, voice_id: str) -> bytes:
 ########################################################
 # Amazon S3 Setup                                      #
 ########################################################
+
 # load s3 bucket environment
 s3_client = boto3.client(
     's3',
@@ -210,13 +211,13 @@ async def saveToS3(bucket: str, filename: str, audio: bytes) -> bool:
 
     def _put():
         s3_client.put_object(
-            Bucket=bucket,
-            Key=filename,
-            Body=audio,
-            ContentType=content_type,
-            ContentDisposition='inline',
-            CacheControl='no-cache',
-        )
+                Bucket=bucket,
+                Key=filename,
+                Body=audio,
+                ContentType=content_type,
+                ContentDisposition='inline',
+                CacheControl='no-cache',
+            )
         return True
 
     try:
