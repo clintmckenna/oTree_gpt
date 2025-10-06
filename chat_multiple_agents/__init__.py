@@ -1,6 +1,6 @@
 from otree.api import *
 from os import environ
-from openai import OpenAI
+from openai import AsyncOpenAI
 import random
 import json
 from pydantic import BaseModel 
@@ -118,7 +118,7 @@ class MsgOutputSchema(BaseModel):
 ## when triggered, this function will run the system prompt and the user message, which will contain the entire message history, rather than building on dialogue one line at a time
 
 # participant bot llm function
-def runParticipantGPT(inputMessage, tone):
+async def runParticipantGPT(inputMessage, tone):
 
     # grab bot vars from constants
     botTemp = C.BOT_TEMP1
@@ -153,27 +153,29 @@ def runParticipantGPT(inputMessage, tone):
 
 
     # openai client and response creation
-    client = OpenAI(api_key=C.OPENAI_KEY)
-    response = client.chat.completions.create(
+    client = AsyncOpenAI(api_key=C.OPENAI_KEY)
+    response = await client.chat.completions.create(
         model=C.MODEL,
         temperature=botTemp,
         messages=inputMsg,
-        functions=[{
-            "name": "msg_output_schema",
-            "parameters": MsgOutputSchema.model_json_schema()
-        }],
-        function_call={"name": "msg_output_schema"}
+        response_format={
+            "type": "json_schema",
+            "json_schema": {
+                "name": "msg_output_schema",
+                "schema": MsgOutputSchema.model_json_schema(),
+            }
+        }
     )
 
     # grab text output
-    msgOutput = response.choices[0].message.function_call.arguments
+    msgOutput = response.choices[0].message.content
 
     # return the response json
     return msgOutput
 
 
 # run moderator llm function
-def runModeratorGPT(inputMessage):
+async def runModeratorGPT(inputMessage):
 
     # grab bot vars from constants
     botTemp = C.BOT_TEMP2
@@ -208,20 +210,22 @@ def runModeratorGPT(inputMessage):
 
 
     # openai client and response creation
-    client = OpenAI(api_key=C.OPENAI_KEY)
-    response = client.chat.completions.create(
+    client = AsyncOpenAI(api_key=C.OPENAI_KEY)
+    response = await client.chat.completions.create(
         model=C.MODEL,
         temperature=botTemp,
         messages=inputMsg,
-        functions=[{
-            "name": "msg_output_schema",
-            "parameters": MsgOutputSchema.model_json_schema()
-        }],
-        function_call={"name": "msg_output_schema"}
+        response_format={
+            "type": "json_schema",
+            "json_schema": {
+                "name": "msg_output_schema",
+                "schema": MsgOutputSchema.model_json_schema(),
+            }
+        }
     )
 
     # grab text output
-    msgOutput = response.choices[0].message.function_call.arguments
+    msgOutput = response.choices[0].message.content
 
     # return the response json
     return msgOutput
@@ -426,11 +430,11 @@ class chat(Page):
 
     # live method functions
     @staticmethod
-    def live_method(player: Player, data):
+    async def live_method(player: Player, data):
         
         # if no new data, just return cached messages
         if not data:
-            return {player.id_in_group: dict(
+            yield {player.id_in_group: dict(
                 messages=json.loads(player.cachedMessages),
                 reactions=[]
             )}
@@ -493,7 +497,7 @@ class chat(Page):
                 player.cachedMessages = json.dumps(messages)
                 
                 # return output to chat.html
-                return {player.id_in_group: dict(
+                yield {player.id_in_group: dict(
                     event='text',
                     selfText=text,
                     sender=currentPlayer,
@@ -511,7 +515,7 @@ class chat(Page):
                 
                 # Skip if no botId provided
                 if not botId:  
-                    return {player.id_in_group: dict()}
+                    yield {player.id_in_group: dict()}
                     
                 # get messages
                 messages = json.loads(player.cachedMessages)
@@ -522,9 +526,9 @@ class chat(Page):
                     
                     # run function to generate greetings
                     if botId == C.BOT_LABEL1:
-                        botText = runParticipantGPT(messages, tone)
+                        botText = await runParticipantGPT(messages, tone)
                     else:
-                        botText = runModeratorGPT(messages)
+                        botText = await runModeratorGPT(messages)
                         
                     # extract output
                     botContent = json.loads(botText)
@@ -554,7 +558,7 @@ class chat(Page):
                     player.cachedMessages = json.dumps(messages)
                     
                     # return data to chat.html
-                    return {player.id_in_group: dict(
+                    yield {player.id_in_group: dict(
                         event='botText',
                         botMsgId=botMsgId,
                         text=outputText,
@@ -573,16 +577,16 @@ class chat(Page):
                     
                     # if last message was from this bot, wait
                     if lastSender == botId:
-                        return {player.id_in_group: dict()}
+                        yield {player.id_in_group: dict()}
                     
                     # if not, generate bot response
 
                     # run appropriate bot
                     if botId == C.BOT_LABEL1:
-                        botText = runParticipantGPT(messages, tone)
+                        botText = await runParticipantGPT(messages, tone)
                         player.lastParticipantBotMsg = player.messageCount
                     else:
-                        botText = runModeratorGPT(messages)
+                        botText = await runModeratorGPT(messages)
                         player.lastModeratorBotMsg = player.messageCount
                     
                     # process bot response
@@ -607,7 +611,7 @@ class chat(Page):
                     player.cachedMessages = json.dumps(messages)
                     
                     # return data to chat.html
-                    return {player.id_in_group: dict(
+                    yield {player.id_in_group: dict(
                         event='botText',
                         botMsgId=botMsgId,
                         text=outputText,
@@ -619,7 +623,7 @@ class chat(Page):
                     # if its not bot's turn to speak, pass
                     # print(f'Not {botId} turn to speak yet...')
                     
-                    return {player.id_in_group: dict()}
+                    yield {player.id_in_group: dict()}
             
             # handle reaction logic
             elif event == 'reaction':
@@ -673,7 +677,7 @@ class chat(Page):
                     player.cachedMessages = json.dumps(messages)
 
                     # return output to chat.html
-                    return {player.id_in_group: dict(
+                    yield {player.id_in_group: dict(
                         event='msgReaction',
                         playerId=currentPlayer,
                         msgId=msgId,
@@ -687,7 +691,7 @@ class chat(Page):
                 
                 # update phase
                 player.phase = data.get('phase', 0)
-                return {player.id_in_group: dict(
+                yield {player.id_in_group: dict(
                     event='phase',
                     phase=player.phase
                 )}

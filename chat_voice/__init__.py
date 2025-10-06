@@ -1,13 +1,14 @@
 from otree.api import *
 from os import environ
-from openai import OpenAI
+from openai import AsyncOpenAI
 import random
 import json
 from pydantic import BaseModel 
 from datetime import datetime, timezone
-import requests
+import httpx
 import base64
 import boto3
+import aioboto3
 
 doc = """
 Chat with voice via Whisper API and ElevenLabs. Based on chat_complex.
@@ -38,7 +39,7 @@ class C(BaseConstants):
     ## save using s3 vs locally
     ### unless using locally in lab, you should always save to s3 bucket or similar for security
     ### if set to false, audio will be saved locally to static folder
-    AMAZON_S3 = False 
+    AMAZON_S3 = True 
 
     ## Amazon S3 keys
     AMAZON_S3_KEY = environ.get('AMAZON_S3_KEY')
@@ -109,7 +110,7 @@ class MsgOutputSchema(BaseModel):
     reactions: str
 
 # function to run messages 
-def runGPT(inputMessage, tone):
+async def runGPT(inputMessage, tone):
 
     # grab bot vars from constants
     botTemp = C.BOT_TEMP
@@ -139,20 +140,22 @@ def runGPT(inputMessage, tone):
     inputMsg = [{'role': 'system', 'content': botPrompt}] + inputMessage
 
     # openai client and response creation
-    client = OpenAI(api_key=C.OPENAI_KEY)
-    response = client.chat.completions.create(
+    client = AsyncOpenAI(api_key=C.OPENAI_KEY)
+    response = await client.chat.completions.create(
         model=C.MODEL,
         temperature=botTemp,
         messages=inputMsg,
-        functions=[{
-            "name": "msg_output_schema",
-            "parameters": MsgOutputSchema.model_json_schema()
-        }],
-        function_call={"name": "msg_output_schema"}
+        response_format={
+            "type": "json_schema",
+            "json_schema": {
+                "name": "msg_output_schema",
+                "schema": MsgOutputSchema.model_json_schema(),
+            }
+        }
     )
 
     # grab text output
-    msgOutput = response.choices[0].message.function_call.arguments
+    msgOutput = response.choices[0].message.content
 
     # return the response json
     return msgOutput
@@ -163,22 +166,18 @@ def runGPT(inputMessage, tone):
 ########################################################
 
 # function to get audio from elevenlabs
-def runVoiceAPI(inputMessage, voice_id):
+HTTPX_CLIENT = httpx.AsyncClient(timeout=30)
+async def runVoiceAPI(inputMessage: str, voice_id: str) -> bytes:
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+    headers = {
+        "xi-api-key": C.ELEVENLABS_KEY,
+        "Content-Type": "application/json",
+    }
+    payload = {"text": inputMessage}
 
-    # using requests package again
-    response = requests.post(
-        f'https://api.elevenlabs.io/v1/text-to-speech/{voice_id}', 
-        headers = {
-            'xi-api-key': C.ELEVENLABS_KEY,
-            'Content-Type': 'application/json',
-        }, 
-        json = {
-            'text': inputMessage
-        }
-    )
-
-    # return audio
-    return response.content
+    resp = await HTTPX_CLIENT.post(url, headers=headers, json=payload)
+    resp.raise_for_status()
+    return resp.content  # audio bytes
 
 # for further prompt formatting, check out this page:
 # https://elevenlabs.io/docs/best-practices/prompting
@@ -192,62 +191,52 @@ def runVoiceAPI(inputMessage, voice_id):
 ########################################################
 
 # load s3 bucket environment
-s3_client = boto3.client('s3',
-    aws_access_key_id = C.AMAZON_S3_KEY,
-    aws_secret_access_key = C.AMAZON_S3_SECRET,
-    region_name = 'us-east-2'  # Match your bucket's region
+s3_signer = boto3.client(
+    's3',
+    aws_access_key_id=C.AMAZON_S3_KEY,
+    aws_secret_access_key=C.AMAZON_S3_SECRET,
+    region_name='us-east-2',
 )
 
 # save audio to s3 function
-def saveToS3(bucket, filename, audio):
-    """Save file to S3 with appropriate content type"""
+async def saveToS3(bucket: str, filename: str, audio: bytes) -> bool:
+    content_type = 'audio/mpeg' if filename.endswith('.mp3') else 'audio/webm'
     try:
-        # Determine content type based on file extension
-        content_type = 'audio/mpeg' if filename.endswith('.mp3') else 'audio/webm'
-        
-        # save to s3 with content type
-        s3_client.put_object(
-            Bucket=bucket,
-            Key=filename,
-            Body=audio,
-            ContentType=content_type,
-            ContentDisposition='inline',
-            CacheControl='no-cache'
-        )
+        session = aioboto3.Session()
+        async with session.client(
+            's3',
+            aws_access_key_id=C.AMAZON_S3_KEY,
+            aws_secret_access_key=C.AMAZON_S3_SECRET,
+            region_name='us-east-2',
+        ) as s3:
+            await s3.put_object(
+                Bucket=bucket,
+                Key=filename,
+                Body=audio,
+                ContentType=content_type,
+                ContentDisposition='inline',
+                CacheControl='no-cache',
+            )
         return True
     except Exception as e:
-        print(f"Error saving to S3: {str(e)}")
+        print(f'Error saving to S3: {e}')
         return False
 
 # grab s3 url function
 def get_s3_url(bucket, filename, expiration=3600):
-    """
-    Generate a pre-signed URL for an S3 object
-    Args:
-        bucket (str): S3 bucket name
-        filename (str): Object key/filename in S3
-        expiration (int): URL expiration time in seconds (default 1 hour)
-    Returns:
-        str: Pre-signed URL for the S3 object
-    """
     try:
-        # Get the content type based on file extension
         content_type = 'audio/mpeg' if filename.endswith('.mp3') else 'audio/webm'
-        
-        url = s3_client.generate_presigned_url(
+        url = s3_signer.generate_presigned_url(
             'get_object',
-            Params={
-                'Bucket': bucket,
-                'Key': filename,
-                'ResponseContentType': content_type
-            },
-            ExpiresIn=expiration
+            Params={'Bucket': bucket, 'Key': filename, 'ResponseContentType': content_type},
+            ExpiresIn=expiration,
         )
         print(f"Generated S3 URL for {filename} with content type {content_type}")
         return url
     except Exception as e:
         print(f"Error generating S3 URL: {str(e)}")
         return None
+
 
 ########################################################
 # Models                                               #
@@ -410,11 +399,11 @@ class chat(Page):
 
     # live method functions
     @staticmethod
-    def live_method(player: Player, data):
+    async def live_method(player: Player, data):
         
         # if no new data, just return cached messages
         if not data:
-            return {player.id_in_group: dict(
+            yield {player.id_in_group: dict(
                 messages=json.loads(player.cachedMessages),
                 reactions=[]
             )}
@@ -438,7 +427,7 @@ class chat(Page):
             # handle player input logic
             if event == 'text':
 
-                # grab base64 text and decode
+                # # grab base64 text and decode
                 voiceInput = data['text']
                 print("Received base64 text length:", len(voiceInput))
                 b64 = base64.b64decode(voiceInput)
@@ -453,26 +442,35 @@ class chat(Page):
                 # Check if we have the OpenAI key
                 if not C.OPENAI_KEY:
                     print("ERROR: OpenAI API key is not set!")
-                    return {player.id_in_group: {'error': 'OpenAI API key is not configured'}}
+                    yield {player.id_in_group: {'error': 'OpenAI API key is not configured'}}
 
                 try:
-                    # send the file-like object to Whisper API for transcription using requests
-                    response = requests.post(
-                        url = 'https://api.openai.com/v1/audio/transcriptions',
-                        headers = {'Authorization': f'Bearer {C.OPENAI_KEY}'},
-                        files={"file": (filename, b64, "audio/webm")}, # base64 decoded data sent directly
-                        data={'model': 'whisper-1'}
-                    )
                     
-                    # extract text from response
-                    text = response.text
-                    llmText = json.loads(text)['text']
+                    headers = {
+                        'Authorization': f'Bearer {C.OPENAI_KEY}',
+                    }
+                    data = {
+                        'model': 'whisper-1',
+                    }
+                    files = {
+                        'file': (filename, b64, 'audio/webm'),
+                    }
+
+                    resp = await HTTPX_CLIENT.post(
+                        'https://api.openai.com/v1/audio/transcriptions',
+                        headers=headers,
+                        data=data,
+                        files=files,
+                        timeout=60,
+                    )
+                    resp.raise_for_status()
+                    llmText = resp.json()['text']
                     print("LLM Text:", llmText)
 
                 # debug if there was a problem with transcription
                 except Exception as e:
                     print("Error during transcription:", str(e))
-                    return {player.id_in_group: {'error': f'Transcription failed: {str(e)}'}}
+                    yield {player.id_in_group: {'error': f'Transcription failed: {str(e)}'}}
 
                 # randomize tone for each message
                 # tones = ['friendly', 'sarcastic', 'UNHINGED']
@@ -489,7 +487,7 @@ class chat(Page):
                     filename = f'{sessionCode}_{msgId}.webm'
                     if C.AMAZON_S3:
                         # change to whatever you named your S3 bucket
-                        saveToS3('otree-gpt', filename, b64)
+                        await saveToS3('otree-gpt', filename, b64)
                     else:
                         # or save to static folder
                         audioFilePath = f'_static/chat_voice/recordings/{filename}'
@@ -531,7 +529,7 @@ class chat(Page):
                 player.cachedMessages = json.dumps(messages)
                 
                 # return output to chat.html
-                return {player.id_in_group: dict(
+                yield {player.id_in_group: dict(
                     event='text',
                     selfText=llmText,
                     sender=currentPlayer,
@@ -551,7 +549,7 @@ class chat(Page):
 
                 # run llm on input text
                 dateNow = str(datetime.now(tz=timezone.utc).timestamp())
-                botText = runGPT(messages, tone)
+                botText = await runGPT(messages, tone)
                 
                 # grab bot response data
                 botContent = json.loads(botText)
@@ -580,13 +578,13 @@ class chat(Page):
                 textForVoice = f"<{tone}>: {outputText}"
 
                 # run elevenlabs on the botText
-                audioDat = runVoiceAPI(textForVoice, voiceId)
+                audioDat = await runVoiceAPI(textForVoice, voiceId)
                 
                 # write audio to file and stream from chat.html
                 ## if amazon s3 setting, save to s3, otherwise save to static folder
                 filename = f'{sessionCode}_{botMsgId}.mp3'
                 if C.AMAZON_S3:
-                    if saveToS3('otree-gpt', filename, audioDat):
+                    if await saveToS3('otree-gpt', filename, audioDat):
                         audioURL = get_s3_url('otree-gpt', filename)
                         if not audioURL:
                             print("Failed to generate S3 URL, falling back to local storage")
@@ -602,13 +600,12 @@ class chat(Page):
                         f.write(audioDat)
                     audioURL = filename
 
-
                 # update cache with bot message
                 messages.append(botMsg)
                 player.cachedMessages = json.dumps(messages)
 
                 # return output to chat.html
-                return {player.id_in_group: dict(
+                yield {player.id_in_group: dict(
                     event='botText',
                     sender=botId,
                     botMsgId=botMsgId,
@@ -671,7 +668,7 @@ class chat(Page):
                     player.cachedMessages = json.dumps(messages)
 
                     # return output to chat.html
-                    return {player.id_in_group: dict(
+                    yield {player.id_in_group: dict(
                         event='msgReaction',
                         playerId=currentPlayer,
                         msgId=msgId,

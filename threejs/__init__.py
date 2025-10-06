@@ -1,6 +1,6 @@
 from otree.api import *
 from os import environ
-from openai import OpenAI
+from openai import AsyncOpenAI
 import random
 import json
 from pydantic import BaseModel 
@@ -148,7 +148,7 @@ class MsgOutputSchema(BaseModel):
 ## when triggered, this function will run the system prompt and the user message, which will contain the entire message history, rather than building on dialogue one line at a time
 
 # bot llm function
-def runGPT(inputMessage, tone, botLabel):
+async def runGPT(inputMessage, tone, botLabel):
 
     # grab bot vars from constants
     botLabel = botLabel
@@ -187,20 +187,22 @@ def runGPT(inputMessage, tone, botLabel):
     inputMsg = [{'role': 'system', 'content': botPrompt}] + nestedInput
 
     # openai client and response creation
-    client = OpenAI(api_key=C.OPENAI_KEY)
-    response = client.chat.completions.create(
+    client = AsyncOpenAI(api_key=C.OPENAI_KEY)
+    response = await client.chat.completions.create(
         model=C.MODEL,
         temperature=botTemp,
         messages=inputMsg,
-        functions=[{
-            "name": "msg_output_schema",
-            "parameters": MsgOutputSchema.model_json_schema()
-        }],
-        function_call={"name": "msg_output_schema"}
+        response_format={
+            "type": "json_schema",
+            "json_schema": {
+                "name": "msg_output_schema",
+                "schema": MsgOutputSchema.model_json_schema(),
+            }
+        }
     )
 
     # grab text output
-    msgOutput = response.choices[0].message.function_call.arguments
+    msgOutput = response.choices[0].message.content
 
     # return the response json
     return msgOutput
@@ -428,11 +430,11 @@ class chat(Page):
 
     # live method functions
     @staticmethod
-    def live_method(player: Player, data):
+    async def live_method(player: Player, data):
         
         # if no new data, just return cached messages
         if not data:
-            return {player.id_in_group: dict(
+            yield {player.id_in_group: dict(
                 messages=json.loads(player.cachedMessages),
                 reactions=[]
             )}
@@ -501,8 +503,8 @@ class chat(Page):
                 # update cache
                 player.cachedMessages = json.dumps(messages)
                 
-                # return output to chat.html
-                return {player.id_in_group: dict(
+                # yield output to chat.html
+                yield {player.id_in_group: dict(
                     event='text',
                     selfText=text,
                     sender=currentPlayer,
@@ -520,7 +522,7 @@ class chat(Page):
                 dateNow = str(datetime.now(tz=timezone.utc).timestamp())
 
                 if botId:
-                    botText = runGPT(messages, tone, botId)
+                    botText = await runGPT(messages, tone, botId)
                     print('botId:', botId)
                     print('botText:', botText)
 
@@ -548,8 +550,8 @@ class chat(Page):
                         target=botId
                     )
 
-                    # return data to chat.html
-                    return {player.id_in_group: dict(
+                    # yield data to chat.html
+                    yield {player.id_in_group: dict(
                         event='botText',
                         botMsgId=botMsgId,
                         text=outputText,
@@ -624,7 +626,7 @@ class chat(Page):
                         posGreen=json.dumps(greenPos),
                     )
 
-                    return {player.id_in_group: dict(
+                    yield {player.id_in_group: dict(
                         event='phase',
                         phase=currentPhase,
                         posPlayer=json.dumps(playerPos),

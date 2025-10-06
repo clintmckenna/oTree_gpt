@@ -1,6 +1,6 @@
 from otree.api import *
 from os import environ
-from openai import OpenAI
+from openai import AsyncOpenAI
 import random
 import json
 from datetime import datetime, timezone
@@ -84,15 +84,16 @@ class C(BaseConstants):
 # LLM Setup                                            #
 ########################################################
 
-# function to run messages
-def runGPT(inputMessage):
+# function to run messages (async)
+async def runGPT(inputMessage):
 
-    # openai client and response creation
-    client = OpenAI(api_key=C.OPENAI_KEY)
-    response = client.chat.completions.create(
+    # openai async client and response creation
+    client = AsyncOpenAI(api_key=C.OPENAI_KEY)
+    response = await client.chat.completions.create(
         model=C.MODEL,
         temperature=C.BOT_TEMP,
-        messages=inputMessage
+        messages=inputMessage,
+        stream=False,
     )
 
     # return just the text response
@@ -227,15 +228,16 @@ class chat(Page):
         )
 
 
-    # live method functions
+    # live method functions (async)
     @staticmethod
-    def live_method(player: Player, data):
+    async def live_method(player: Player, data):
         
         # if no new data, just return cached messages
         if not data:
-            return {player.id_in_group: dict(
+            yield {player.id_in_group: dict(
                 messages=json.loads(player.cachedMessages),
             )}
+            return
         
         # if we have new data, process it and update cache
         messages = json.loads(player.cachedMessages)
@@ -280,13 +282,14 @@ class chat(Page):
                 # update cache
                 player.cachedMessages = json.dumps(messages)
                 
-                # return output to chat.html
-                return {player.id_in_group: dict(
+                # yield output to chat.html
+                yield {player.id_in_group: dict(
                     event='text',
                     selfText=text,
                     sender=currentPlayer,
                     msgId=msgId,
                 )}
+                return
 
             # handle bot messages
             elif event == 'botMsg':
@@ -305,7 +308,7 @@ class chat(Page):
                 # run llm on input text
                 dateNow = str(datetime.now(tz=timezone.utc).timestamp())
                 botMsgId = botId + '-' + str(dateNow)
-                botText = runGPT(messages)
+                botText = await runGPT(messages)
                 
                 # create bot message formatted for llm
                 botMsg = {'role': 'assistant', 'content': botText}
@@ -325,15 +328,15 @@ class chat(Page):
                 messages.append(botMsg)
                 player.cachedMessages = json.dumps(messages)
 
-                # return output to chat.html
-                return {player.id_in_group: dict(
+                # yield output to chat.html
+                yield {player.id_in_group: dict(
                     event='botText',
                     sender=botId,
                     botMsgId=botMsgId,
                     text=botText,
                     botClass=botClass,
                 )}
-
+                return
 
 
 # page sequence

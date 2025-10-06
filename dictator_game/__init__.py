@@ -1,6 +1,6 @@
 from otree.api import *
 from os import environ
-from openai import OpenAI
+from openai import AsyncOpenAI
 import random
 import json
 from pydantic import BaseModel 
@@ -91,7 +91,7 @@ class MsgOutputSchema(BaseModel):
 
 
 # function to run messages 
-def runGPT(inputMessage, trustRating):
+async def runGPT(inputMessage, trustRating):
 
     # grab bot vars from constants
     botTemp = C.BOT_TEMP
@@ -126,20 +126,22 @@ def runGPT(inputMessage, trustRating):
     inputMsg = [{'role': 'system', 'content': botPrompt}] + inputMessage
 
     # openai client and response creation
-    client = OpenAI(api_key=C.OPENAI_KEY)
-    response = client.chat.completions.create(
+    client = AsyncOpenAI(api_key=C.OPENAI_KEY)
+    response = await client.chat.completions.create(
         model=C.MODEL,
         temperature=botTemp,
         messages=inputMsg,
-        functions=[{
-            "name": "msg_output_schema",
-            "parameters": MsgOutputSchema.model_json_schema()
-        }],
-        function_call={"name": "msg_output_schema"}
+        response_format={
+            "type": "json_schema",
+            "json_schema": {
+                "name": "msg_output_schema",
+                "schema": MsgOutputSchema.model_json_schema(),
+            }
+        }
     )
 
     # grab text output
-    msgOutput = response.choices[0].message.function_call.arguments
+    msgOutput = response.choices[0].message.content
 
     # return the response json
     return msgOutput
@@ -319,11 +321,11 @@ class chat(Page):
     
     # live method functions
     @staticmethod
-    def live_method(player: Player, data):
+    async def live_method(player: Player, data):
         
         # if no new data, just return cached messages
         if not data:
-            return {player.id_in_group: dict(
+            yield {player.id_in_group: dict(
                 messages=json.loads(player.cachedMessages),
                 reactions=[]
             )}
@@ -390,7 +392,7 @@ class chat(Page):
                 player.cachedMessages = json.dumps(messages)
                 
                 # return output to chat.html
-                return {player.id_in_group: dict(
+                yield {player.id_in_group: dict(
                     event='text',
                     sender=currentPlayer,
                     msgId=msgId,
@@ -406,7 +408,7 @@ class chat(Page):
 
                 # run llm on input text
                 dateNow = str(datetime.now(tz=timezone.utc).timestamp())
-                botText = runGPT(messages, trustRating)
+                botText = await runGPT(messages, trustRating)
                 
                 # grab bot response data
                 botContent = json.loads(botText)
@@ -453,7 +455,7 @@ class chat(Page):
                 player.cachedMessages = json.dumps(messages)
 
                 # return output to chat.html
-                return {player.id_in_group: dict(
+                yield {player.id_in_group: dict(
                     event='botText',
                     sender=botId,
                     botMsgId=botMsgId,
@@ -516,7 +518,7 @@ class chat(Page):
                     player.cachedMessages = json.dumps(messages)
 
                     # return output to chat.html
-                    return {player.id_in_group: dict(
+                    yield {player.id_in_group: dict(
                         event='msgReaction',
                         playerId=currentPlayer,
                         msgId=msgId,
