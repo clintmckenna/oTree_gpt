@@ -515,9 +515,10 @@ class chat(Page):
                 # create message in LLM format
                 msg = {'role': 'user', 'content': json.dumps(content)}
 
-                # save to database
+                # reload player in this DB session and save to database
+                local_player = Player.get(id=player.id)
                 MessageData.create(
-                    player=player,
+                    player=local_player,
                     msgId=msgId,
                     timestamp=dateNow,
                     sender='Subject',
@@ -563,9 +564,10 @@ class chat(Page):
                 # create bot message
                 botMsg = {'role': 'assistant', 'content': botText}
                 
-                # save to database
+                # reload player in this DB session and save to database
+                local_player = Player.get(id=player.id)
                 MessageData.create(
-                    player=player,
+                    player=local_player,
                     sender=botId,
                     msgId=botMsgId,
                     timestamp=dateNow,
@@ -633,8 +635,9 @@ class chat(Page):
                 emoji = data['emoji']
 
                 # check if reaction already exists
+                local_player = Player.get(id=player.id)
                 existingReactions = MsgReactionData.filter(
-                    player=player,
+                    player=local_player,
                     msgId=msgId,
                     sender=currentPlayer,
                     emoji=emoji
@@ -643,7 +646,7 @@ class chat(Page):
                 # create new reaction in database if not existing
                 if not existingReactions:
                     MsgReactionData.create(
-                        player=player,
+                        player=local_player,
                         sender=currentPlayer,
                         msgId=msgId,
                         msgReactionId=msgReactionId,
@@ -658,7 +661,7 @@ class chat(Page):
                         content = json.loads(msg['content'])
                         if content.get('msgId') == msgId:
                             reactionCounts = {emoji: 0 for emoji in C.EMOJIS}
-                            msgReactions = MsgReactionData.filter(player=player, msgId=msgId)
+                            msgReactions = MsgReactionData.filter(player=local_player, msgId=msgId)
                             countedUsers = {emoji: set() for emoji in C.EMOJIS}
                             for reaction in msgReactions:
                                 if reaction.target not in countedUsers[reaction.emoji]:
