@@ -1,7 +1,6 @@
 # oTree GPT 
 
-
-
+Update 10/6/2025: I have updated the repo to use [oTree's new 6.0 beta](https://otree.readthedocs.io/en/latest/misc/version_history.html) that allows for asynchronous live page API calls.
 
 This is a collection of templates for using large language model (LLM) agents in oTree behavioral experiments. I originally updated this repository from previous verstions to use the LiteLLM package as a simple way to allow for multiple LLM services. Unfortunately, I could not resolve some dependency conflicts with oTree, so I reverted back to using the OpenAI package. If you desire a different commercial service, let me know and I can help you implement it.
 
