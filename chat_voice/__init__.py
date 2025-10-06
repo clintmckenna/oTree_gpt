@@ -447,7 +447,6 @@ class chat(Page):
                 if not C.OPENAI_KEY:
                     print("ERROR: OpenAI API key is not set!")
                     yield {player.id_in_group: {'error': 'OpenAI API key is not configured'}}
-                    return
 
                 try:
                     
@@ -476,7 +475,6 @@ class chat(Page):
                 except Exception as e:
                     print("Error during transcription:", str(e))
                     yield {player.id_in_group: {'error': f'Transcription failed: {str(e)}'}}
-                    return
 
                 # randomize tone for each message
                 # tones = ['friendly', 'sarcastic', 'UNHINGED']
@@ -517,10 +515,9 @@ class chat(Page):
                 # create message in LLM format
                 msg = {'role': 'user', 'content': json.dumps(content)}
 
-                # reload player in this DB session and save to database
-                local_player = Player.filter(id=player.id)[0]
+                # save to database
                 MessageData.create(
-                    player=local_player,
+                    player=player,
                     msgId=msgId,
                     timestamp=dateNow,
                     sender='Subject',
@@ -566,10 +563,9 @@ class chat(Page):
                 # create bot message
                 botMsg = {'role': 'assistant', 'content': botText}
                 
-                # reload player in this DB session and save to database
-                local_player = Player.get(id=player.id)
+                # save to database
                 MessageData.create(
-                    player=local_player,
+                    player=player,
                     sender=botId,
                     msgId=botMsgId,
                     timestamp=dateNow,
@@ -637,9 +633,8 @@ class chat(Page):
                 emoji = data['emoji']
 
                 # check if reaction already exists
-                local_player = Player.get(id=player.id)
                 existingReactions = MsgReactionData.filter(
-                    player=local_player,
+                    player=player,
                     msgId=msgId,
                     sender=currentPlayer,
                     emoji=emoji
@@ -648,7 +643,7 @@ class chat(Page):
                 # create new reaction in database if not existing
                 if not existingReactions:
                     MsgReactionData.create(
-                        player=local_player,
+                        player=player,
                         sender=currentPlayer,
                         msgId=msgId,
                         msgReactionId=msgReactionId,
@@ -663,7 +658,7 @@ class chat(Page):
                         content = json.loads(msg['content'])
                         if content.get('msgId') == msgId:
                             reactionCounts = {emoji: 0 for emoji in C.EMOJIS}
-                            msgReactions = MsgReactionData.filter(player=local_player, msgId=msgId)
+                            msgReactions = MsgReactionData.filter(player=player, msgId=msgId)
                             countedUsers = {emoji: set() for emoji in C.EMOJIS}
                             for reaction in msgReactions:
                                 if reaction.target not in countedUsers[reaction.emoji]:
