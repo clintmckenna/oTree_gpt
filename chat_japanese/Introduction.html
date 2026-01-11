@@ -1,0 +1,44 @@
+{{ extends "chat_japanese/Page.html" }}
+
+{{ block title }}
+    実験へようこそ
+{{ endblock }}
+
+{{ block content }}
+<div class="container">
+    <div class="card">
+        <div class="card-body">
+            <div class="alert alert-warning text-center" role="alert">
+                <h4 class="alert-heading"><strong>⚠️ これはデモンストレーションです ⚠️</strong></h4>
+                <p class="mb-0">この実験は、システムの機能を紹介するためのデモです。</p>
+            </div>
+            
+            <h2 class="card-title">実験概要</h2>
+            
+            <div class="mt-4">
+                <h4>このデモについて</h4>
+                <p>このデモでは、AI（人工知能）エージェントとの対話を通じて、社会的な争点についてのあなたの考え方を探る実験システムを体験できます。</p>
+                
+                <h5 class="mt-4">実験の流れ：</h5>
+                <ol>
+                    <li><strong>事前質問</strong>：まず、ある社会的争点に対するあなたの考え方についてお聞きします。</li>
+                    <li><strong>AIとの対話</strong>：次に、AIエージェントとその争点について会話していただきます。</li>
+                    <li><strong>事後質問</strong>：会話の後、再度同じ争点についてのあなたの考え方をお聞きします。</li>
+                </ol>
+                
+                <h5 class="mt-4">注意事項：</h5>
+                <ul>
+                    <li>AIとの会話には制限時間があります。</li>
+                    <li>自由に意見を述べてください。正解・不正解はありません。</li>
+                    <li>率直な意見をお聞かせください。</li>
+                </ul>
+                
+            </div>
+            
+            <div class="mt-4">
+                {{ next_button class="btn btn-primary btn-lg" }}
+            </div>
+        </div>
+    </div>
+</div>
+{{ endblock }}

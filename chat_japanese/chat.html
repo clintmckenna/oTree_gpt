@@ -1,0 +1,329 @@
+{{ extends "chat_complex/Page.html" }}
+
+{{ block title }}
+{{ endblock }}
+
+{{ block styles }}
+{{ endblock }}
+
+
+{{ block scripts }}
+<script>
+
+    // run this when page loads
+    document.addEventListener('DOMContentLoaded', function() {
+        // Prevent form submission when pressing enter or clicking buttons (except endChatNow)
+        const form = document.querySelector('form');
+        let allowSubmit = false;
+        
+        form.addEventListener('submit', function(e) {
+            if (!allowSubmit) {
+                e.preventDefault();
+            }
+        });
+        
+        // Override endChatNow to allow submission
+        window.endChatNow = function() {
+            if (confirm('会話を終了して次のページに進みますか？')) {
+                allowSubmit = true;
+                form.submit();
+            }
+        };
+        
+        // delay chat input focus
+        setTimeout(() => {
+            const chatInput = document.getElementById('chatinput');
+            chatInput.focus();
+        }, 100);
+
+        // start listening for live page functions
+        liveSend({});
+        
+    });
+
+
+    // Close emoji bar when clicking outside
+    document.addEventListener('click', (event) => {
+        // Find the closest message element if clicked
+        const messageElement = event.target.closest('.message');
+        
+        // If clicking outside any message, remove all persistent classes
+        if (!messageElement) {
+            document.querySelectorAll('.message-reaction-bar.persistent').forEach(bar => {
+                bar.classList.remove('persistent');
+            });
+            return;
+        }
+        
+        // If clicking on a message, toggle the persistent class for its reaction bar
+        const reactionBar = messageElement.querySelector('.message-reaction-bar');
+        if (reactionBar) {
+            // Remove persistent class from all other bars first
+            document.querySelectorAll('.message-reaction-bar.persistent').forEach(bar => {
+                if (bar !== reactionBar) {
+                    bar.classList.remove('persistent');
+                }
+            });
+            // Toggle persistent class on the clicked message's bar
+            reactionBar.classList.toggle('persistent');
+        }
+    });
+
+
+
+    // Enterキーでの送信を無効化（誤操作防止）
+    var chatInput = document.getElementById('chatinput');    
+    chatInput.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter') {
+            event.preventDefault(); // Enterキーでの送信を防止
+        }
+    });
+
+    
+    // function to send user message to server
+    function sendMsg() {
+        const text = chatInput.value.trim();
+        if (text) {
+            liveSend({'event': 'text', 'text': text});
+            // clear the input field
+            chatInput.value = '';
+        }
+    }
+
+    // function to end chat immediately and proceed to next page
+    function endChatNow() {
+        if (confirm('会話を終了して次のページに進みますか？')) {
+            // Submit the form to proceed to next page
+            document.querySelector('form').submit();
+        }
+    }
+
+
+    // function to add emoji reaction to messages
+    function addMessageReaction(messageId, emoji) {
+
+        const messageElement = document.getElementById(messageId);
+        const author = messageElement.dataset.author;
+
+        // send message reaction to server
+        liveSend({'event': 'reaction', 'msgId': messageId, 'emoji': emoji, 'target': author});
+
+    }
+
+    // function for live receiving from server
+    function liveRecv(data) {
+
+        let event = data["event"];
+
+        // Handle text messages send by humans
+        if (event == 'text') {
+
+            // grab data from server
+            const messageId = data.msgId;
+            const selfText = data.selfText;
+            const tone = data.tone;
+            const sender = data.sender;
+            
+            // get chat elements
+            const chatInput = document.getElementById('chatinput');
+            const chatMessages = document.getElementById('chatMessages');
+            const toneSpan = document.getElementById('toneSpan');
+            
+            // create message html from subject input and insert into chatMessages
+            let messageHtml = `
+                <div class="message selfMsg" id="${messageId}" data-author="${sender}">
+                    <strong>あなた<br></strong> ${selfText}
+                    ${js_vars.allow_reactions ? `
+                    <div class="message-reaction-bar">
+                        ${js_vars.emojis.map(emoji => 
+                            `<button class="message-reaction-btn" onclick="addMessageReaction('${messageId}', '${emoji}')">${emoji}</button>`
+                        ).join('')}
+                    </div>
+                    <div class="message-reactions"></div>
+                    ` : ''}
+                </div>
+            `;
+            chatMessages.insertAdjacentHTML('beforeend', messageHtml);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+
+            // trigger bot message
+            liveSend({'event': 'botMsg'});
+            
+
+
+        // handle bot messages
+        } else if (event == 'botText') {
+
+            // grab data from server
+            const botMsgId = data.botMsgId;
+            const text = data.text;
+            const tone = data.tone;
+            const sender = data.sender;
+
+            // get chat elements
+            const chatInput = document.getElementById('chatinput');
+            const chatMessages = document.getElementById('chatMessages');
+            const toneSpan = document.getElementById('toneSpan');
+
+            // Add typing indicator for bot and insert into chatMessages
+            const typingId = 'typing-' + Date.now();
+            let typingHtml = `
+                <div class="message botMsg typing" id="${typingId}">
+                    <div class="typing-indicator">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </div>
+                </div>
+            `;
+            chatMessages.insertAdjacentHTML('beforeend', typingHtml);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+
+            // Close reaction bars
+            document.querySelectorAll('.message-reaction-bar.persistent').forEach(bar => {
+                bar.classList.remove('persistent');
+            });
+
+            
+            // Add bot response after a 2 seconds delay
+            setTimeout(() => {
+                // remove typing indicator
+                const typingIndicator = document.getElementById(typingId);
+                if (typingIndicator) {
+                    typingIndicator.remove();
+                }
+          
+                
+                // replace with bot response
+                let botHtml = `
+                    <div class="message botMsg" id="${botMsgId}" data-author="${sender}">
+                        <strong>${sender}<br></strong> ${text}
+                        ${js_vars.allow_reactions ? `
+                        <div class="message-reaction-bar">
+                            ${js_vars.emojis.map(emoji => 
+                                `<button class="message-reaction-btn" onclick="addMessageReaction('${botMsgId}', '${emoji}')">${emoji}</button>`
+                            ).join('')}
+                        </div>
+                        <div class="message-reactions"></div>
+                        ` : ''}
+                    </div>
+                `;
+                chatMessages.insertAdjacentHTML('beforeend', botHtml);
+
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+
+                // also update tone span
+                toneSpan.textContent = tone;
+
+            }, 2000);
+
+
+        // handle message reactions
+        } else if (event == 'msgReaction') {
+            const msgId = data["msgId"];
+            const emoji = data["emoji"];
+            const playerId = data["playerId"];
+            const messageElement = document.getElementById(msgId);
+            if (!messageElement) return;
+
+            const reactionsContainer = messageElement.querySelector('.message-reactions');
+            if (!reactionsContainer) return;
+
+            // Check if this specific emoji reaction already exists
+            const existingReaction = Array.from(reactionsContainer.children)
+                .find(el => el.dataset.emoji === emoji);
+
+            if (existingReaction) {
+                // Update count if the reaction exists
+                const countElement = existingReaction.querySelector('.reaction-count');
+                const currentCount = parseInt(countElement.textContent || '0');
+                
+                // Add player to the reaction's dataset if not already there
+                const reactedPlayers = existingReaction.dataset.players ? 
+                    existingReaction.dataset.players.split(',') : [];
+                
+                if (!reactedPlayers.includes(playerId)) {
+                    reactedPlayers.push(playerId);
+                    existingReaction.dataset.players = reactedPlayers.join(',');
+                    countElement.textContent = currentCount + 1;
+                }
+            } else {
+                // Create new reaction badge
+                const reactionBadge = document.createElement('div');
+                reactionBadge.className = 'reaction-badge';
+                reactionBadge.dataset.emoji = emoji;
+                reactionBadge.dataset.players = playerId;  // Track who reacted
+                reactionBadge.innerHTML = `
+                    <span class="reaction-emoji">${emoji}</span>
+                    <span class="reaction-count">1</span>
+                `;
+                reactionsContainer.appendChild(reactionBadge);
+
+            }
+
+            // Remove the reaction bar's persistent class after reacting
+            const reactionBar = messageElement.querySelector('.message-reaction-bar');
+            if (reactionBar) {
+                reactionBar.classList.remove('persistent');
+            }
+        }
+    }
+</script>
+{{ endblock }}
+
+
+{{ block content }}
+<div class='container card mb-3'>
+    <div class='row no-gutters'>
+        
+        <!-- left side of interface, with timer and other info -->
+        <div class='infoBox col-md-4 d-flex align-items-center justify-content-center' style='font-size:18px; height: 100%; min-height: 300px; padding: 20px;'>
+            <div style='text-align: center;'>
+                <span class='timer'>
+                    ページは以下の時間後に自動的に進みます：<br>
+                    <span class='otree-timer__time-left'></span>
+                </span>
+                
+                <div class='mt-4' style='text-align: left;'>
+                    <h5><b>対話のテーマ：</b></h5>
+                    <div class='alert alert-primary' style='font-size: 16px;'>
+                        <strong>「{{ player.topic_title }}」</strong>
+                    </div>
+                    
+                    <p style='font-size: 14px;'>
+                        このテーマについて、AIエージェントと自由に対話してください。
+                        あなたの意見、疑問、懸念などを率直に伝えてください。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- right side of interface, with chat box and text input -->
+        <div class='chatPanel col-md-8' id='chatPanel'>
+            <div class='chatHeader'>
+                ボットチャット
+            </div>
+            <div id='chatMessages' class='chatMessages'>
+                <div class='message sysMsg'>
+                    <strong>システム<br></strong>
+                    会話を開始するにはメッセージを送信してください。
+                </div>
+            </div>
+        
+            <div class='inputBox'>
+                <div class='typeInputBox'>
+                    <input type='text' id='chatinput' style='text-align:right;' maxlength='200' placeholder='メッセージを入力後、送信ボタンを押してください'>
+                    <button type='button' onclick='sendMsg()'>送信</button>
+                </div>
+            </div>
+            
+            <div class='text-center mt-3 mb-3'>
+                <button type='button' onclick='endChatNow()' class='btn btn-success btn-lg'>
+                    会話を終了して次へ
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{{ endblock }}

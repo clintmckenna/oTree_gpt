@@ -1,0 +1,57 @@
+{{ extends "chat_japanese/Page.html" }}
+
+{{ block title }}
+    事後質問
+{{ endblock }}
+
+{{ block content }}
+<div class="container">
+    <div class="card">
+        <div class="card-body">
+            <h2 class="card-title">会話後の意見をお聞かせください</h2>
+            
+            <div class="mt-4">
+                <div class="alert alert-success">
+                    <p class="mb-0">
+                        AIエージェントとの会話、お疲れ様でした。
+                    </p>
+                </div>
+                
+                <div class="alert alert-primary mt-4">
+                    <h5>争点：</h5>
+                    <p class="mb-0">
+                        <strong>「{{ player.topic_title }}」</strong>
+                    </p>
+                </div>
+                
+                <p class="mt-4">
+                    会話を通じて、この争点についての考えに変化はありましたか？
+                    改めて、あなたの現在の意見をお聞かせください。
+                </p>
+                
+                <div class="mt-5">
+                    {{ formfields }}
+                </div>
+                
+                <div class="mt-4">
+                    {{ next_button class="btn btn-primary btn-lg" }}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .form-check {
+        padding: 10px;
+        margin-bottom: 10px;
+    }
+    .form-check-input {
+        margin-top: 0.4em;
+    }
+    .form-check-label {
+        font-size: 1.1em;
+        cursor: pointer;
+    }
+</style>
+{{ endblock }}
