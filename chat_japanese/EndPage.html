@@ -1,0 +1,47 @@
+{{ extends "chat_japanese/Page.html" }}
+
+{{ block title }}
+    実験終了
+{{ endblock }}
+
+{{ block content }}
+<div class="container">
+    <div class="card">
+        <div class="card-body text-center">
+            <h2 class="card-title">実験にご協力いただき、ありがとうございました</h2>
+            
+            <div class="mt-5">
+                <svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" fill="currentColor" class="bi bi-check-circle text-success" viewBox="0 0 16 16">
+                    <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+                    <path d="M10.97 4.97a.235.235 0 0 0-.02.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-1.071-1.05z"/>
+                </svg>
+            </div>
+            
+            <div class="mt-4">
+                <h4>実験は完了しました</h4>
+                <p class="lead mt-3">
+                    AIエージェントとの対話実験にご参加いただき、誠にありがとうございました。
+                </p>
+                <p>
+                    皆様のご協力により、AIと人間のコミュニケーションについての
+                    貴重なデータを収集することができます。
+                </p>
+            </div>
+            
+            <div class="alert alert-info mt-5">
+                <h5>データの取り扱いについて</h5>
+                <p class="mb-0">
+                    収集したデータは研究目的にのみ使用され、個人を特定する情報は
+                    厳重に管理されます。
+                </p>
+            </div>
+            
+            <div class="mt-5">
+                <p class="text-muted">
+                    このウィンドウを閉じていただいて結構です。
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{{ endblock }}
