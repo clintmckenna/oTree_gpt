@@ -42,6 +42,14 @@ SESSION_CONFIGS = [
      #     app_sequence=['threejs',],
      #     num_demo_participants=1,
      # ),
+     #,
+     dict(
+         name='TrafficLight',
+         display_name='Traffic Light Game',
+         app_sequence=['TrafficLight',],
+         num_demo_participants=1,
+     ),
+
 ]
 # if you set a property in SESSION_CONFIG_DEFAULTS, it will be inherited by all configs
 # in SESSION_CONFIGS, except those that explicitly override it.
