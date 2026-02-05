@@ -219,6 +219,12 @@ class chat(Page):
     form_model = 'player'
     timeout_seconds = 300
 
+    # vars that we will pass to javascript of chat.html
+    @staticmethod
+    def js_vars(player):
+        return dict(
+            min_typing_ms=2000
+        )
     
     # vars that we will pass to chat.html
     @staticmethod

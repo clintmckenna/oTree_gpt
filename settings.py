@@ -6,11 +6,11 @@ load_dotenv()
 
 
 SESSION_CONFIGS = [
-     # dict(
-     #     name='chat_simple',
-     #     app_sequence=['chat_simple',],
-     #     num_demo_participants=1,
-     # ),
+     dict(
+         name='chat_simple',
+         app_sequence=['chat_simple',],
+         num_demo_participants=1,
+     ),
      # dict(
      #     name='chat_complex',
      #     app_sequence=['chat_complex',],
