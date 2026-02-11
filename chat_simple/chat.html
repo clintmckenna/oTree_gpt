@@ -63,7 +63,8 @@
             const messageId = data.msgId;
             const selfText = data.selfText;
             const sender = data.sender;
-            
+            const botClass = data.botClass;
+
             // get chat elements
             const chatInput = document.getElementById('chatinput');
             const chatMessages = document.getElementById('chatMessages');
@@ -80,20 +81,22 @@
             // trigger bot message
             liveSend({'event': 'botMsg'});
 
-            // Add typing indicator for bot and insert into chatMessages
-            typingId = 'typing-' + Date.now();
-            typingDate = Date.now()
-            let typingHtml = `
-                <div class="message botMsg typing" id="${typingId}">
-                    <div class="typing-indicator">
-                        <span></span>
-                        <span></span>
-                        <span></span>
+            // Add typing indicator for bot after a small delay
+            setTimeout(() => {
+                typingId = 'typing-' + Date.now();
+                typingDate = Date.now()
+                let typingHtml = `
+                    <div class="message botMsg typing ${botClass}" id="${typingId}">
+                        <div class="typing-indicator">
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                        </div>
                     </div>
-                </div>
-            `;
-            chatMessages.insertAdjacentHTML('beforeend', typingHtml);
-            chatMessages.scrollTop = chatMessages.scrollHeight;
+                `;
+                chatMessages.insertAdjacentHTML('beforeend', typingHtml);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }, 1000);
         // handle bot messages
         } else if (event == 'botText') {
 
@@ -107,9 +110,11 @@
             const chatInput = document.getElementById('chatinput');
             const chatMessages = document.getElementById('chatMessages');
             
+            // typing indicator delay
             const now = Date.now();
             const elapsed = typingDate ? (now - typingDate) : MIN_TYPING_MS;
             const delay = Math.max(0, js_vars.min_typing_ms - elapsed);
+
             // Add bot response after a 2 seconds delay
             setTimeout(() => {
                 // remove typing indicator

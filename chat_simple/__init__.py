@@ -288,11 +288,20 @@ class chat(Page):
                 # update cache
                 player.cachedMessages = json.dumps(messages)
                 
+                # get css class for background color
+                if botParty == 'Republican':
+                    botClass = 'redText'
+                elif botParty == 'Democrat':
+                    botClass = 'blueText'
+                else:
+                    botClass = 'miscText'
+
                 # yield output to chat.html
                 yield {player.id_in_group: dict(
                     event='text',
                     selfText=text,
                     sender=currentPlayer,
+                    botClass=botClass,
                     msgId=msgId,
                 )}
                 return
