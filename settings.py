@@ -11,42 +11,42 @@ SESSION_CONFIGS = [
          app_sequence=['chat_simple',],
          num_demo_participants=1,
      ),
-     # dict(
-     #     name='chat_complex',
-     #     app_sequence=['chat_complex',],
-     #     num_demo_participants=1,
-     # ),
+     dict(
+         name='chat_complex',
+         app_sequence=['chat_complex',],
+         num_demo_participants=1,
+     ),
+     
+     dict(
+         name='chat_voice',
+         app_sequence=['chat_voice',],
+         num_demo_participants=1,
+     ),
+     dict(
+         name='dictator_game',
+         app_sequence=['dictator_game',],
+         num_demo_participants=1,
+     ),
+     dict(
+         name='chat_multiple_agents',
+         app_sequence=['chat_multiple_agents',],
+         num_demo_participants=1,
+     ),
+     dict(
+         name='threejs',
+         app_sequence=['threejs',],
+         num_demo_participants=1,
+     ),
      dict(
          name='chat_japanese',
          app_sequence=['chat_japanese',],
          num_demo_participants=100,  # デモ参加者数を増やして繰り返しテスト可能に
          use_browser_bots=False,  # リンクを繰り返し使用可能にする
      ),
-     # dict(
-     #     name='chat_voice',
-     #     app_sequence=['chat_voice',],
-     #     num_demo_participants=1,
-     # ),
-     # dict(
-     #     name='dictator_game',
-     #     app_sequence=['dictator_game',],
-     #     num_demo_participants=1,
-     # ),
-     # dict(
-     #     name='chat_multiple_agents',
-     #     app_sequence=['chat_multiple_agents',],
-     #     num_demo_participants=1,
-     # ),
-     # dict(
-     #     name='threejs',
-     #     app_sequence=['threejs',],
-     #     num_demo_participants=1,
-     # ),
-     #,
      dict(
-         name='TrafficLight',
+         name='traffic_light',
          display_name='Traffic Light Game',
-         app_sequence=['TrafficLight',],
+         app_sequence=['traffic_light',],
          num_demo_participants=1,
      ),
 
@@ -64,14 +64,18 @@ PARTICIPANT_FIELDS = []
 SESSION_FIELDS = []
 
 
-# rooms - 同じリンクを繰り返し使用可能
+# rooms
 ROOMS = [
     dict(
-        name='chat_japanese_room',
-        display_name='Chat Japanese Room',
-        participant_label_file='_rooms/chat_japanese_room.txt',
-        use_secure_urls=False,  # セキュアURLを無効化してリンクを繰り返し使用可能に
+        name='studyRoom1',
+        display_name='Study Room 1',
     ),
+    # dict(
+    #     name='chat_japanese_room',
+    #     display_name='Chat Japanese Room',
+    #     participant_label_file='_rooms/chat_japanese_room.txt',
+    #     use_secure_urls=False,  # セキュアURLを無効化してリンクを繰り返し使用可能に
+    # ),
 ]
 
 

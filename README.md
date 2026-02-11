@@ -17,7 +17,13 @@ I am continuously working on adding more templates. Here is the current list, in
 - [chat_multiple_agents](#chat_multiple_agents)
 - [threejs](#threejs)
 
-## chat_simple
+I will also include applications that are submitted by the community here:
+- [chat_japanese](#chat_japanese) (submitted by @lvzeyu)
+- [traffic_light](#traffic_light) (submitted by @lvzeyu)
+
+## Applications
+
+### chat_simple
 
 This is a simple version of a chat task with a randomized LLM agent. The agent will be on of two personalities: Republican or Democrat. It also demonstrates how you can use randomized conditions to adjust things like CSS styles.
 
@@ -26,7 +32,7 @@ This is a simple version of a chat task with a randomized LLM agent. The agent w
 
 This app is useful if you only care about the text that is sent to and from the LLM agent and will not use more complex features.
 
-## chat_complex
+### chat_complex
 
 This is a similar application that demonstrates how one can use sturctured output with the LLM response. This uses pydantic to validate the json schema for whatever variables you want passed to the LLM agent:
 
@@ -45,7 +51,7 @@ Additionally, this allows for more complex information to be stored, such as emo
 
 Importantly, you will need to use a model that supports structured output for this app. More documentation about this can be found [here](https://docs.litellm.ai/docs/completion/json_mode).
 
-## chat_voice
+### chat_voice
 
 This extends chat_complex to add voice chat functionality. It uses the Whisper API to transcribe audio from the user's microphone. It then uses the ElevenLabs API to generate a voice response. Audio can be saved either locally or on an Amazon S3 bucket. For security reasons, you should only use local saving if you are running an experiment locally in the lab. 
 
@@ -57,21 +63,21 @@ You can also save the user audio if desired to run further analyses on (e.g. par
 
 I should note that this app has not been tested for performance or scalability, so I would advise to not run too many subjects at once. Additionally, ElevenLabs can be expensive to run, so be mindful of how many credits you are using throughout your studies.
 
-## dictator_game
+### dictator_game
 
 This is a simple dictator game that uses the LLM agent to make decision about the participant. This demonstrates how you can integrate the agent's decision along side other python functions. Here, an integer representing the percentage liklihood the agent will trust the participant is taken into account when the agent forms a message, and will update this amount depending on what the participant says.
 
 <img src="./_static/dictator.gif" style="display: block;">
 <img src="./_static/dictator2.png" style="display: block;">
 
-## chat_multiple_agents
+### chat_multiple_agents
 
 In the previous experiments, the LLM agent message is triggered when the participant sends their own message. This experiment demonstrates how you can trigger a check every x seconds, allowing for more than one agent. In this case, we have a participant agent, acting as a debate partner, and a moderator agent, who will respond to the message history between the two. The participant agent responds to every participant message, but the moderator agent only responds to every 6th message.
 
 <img src="./_static/multi1.png" style="display: block; width: 60%">
 <img src="./_static/multi2.png" style="display: block; width: 60%">
 
-## threejs
+### threejs
 
 This experiment demonstrates how you can use three.js to create a 3D environment and surface LLM data based on behavior in the environment. Here, we demonstrate how the player character must solicit information from different agents to piece together details of a crime that had occurred.
 
@@ -80,6 +86,18 @@ This experiment demonstrates how you can use three.js to create a 3D environment
 In this example, the agent's conversation cue will only trigger when the participant character is close enough in a 3d space (10 units in this case). This template can be useful for games where participants must gather information from different sources to piece together information (e.g. jigsaw classroom). It may also be useful for testing agent based models of conversation behavior with humans interacting with NPCs.
 
 More information about three.js can be found [here](https://threejs.org/).
+
+
+## Community-Submitted Applications
+
+### chat_japanese
+##### submitted by @lvzeyu
+
+This is a translated version of the chat application into Japanese. It also includes a before and after questionnaire.
+
+### traffic_light
+##### submitted by @lvzeyu
+This is a version of the traffic light experiment that uses the LLM agent to make decisions about norm violations.
 
 ## Experiment Settings
 
