@@ -96,7 +96,7 @@
                 `;
                 chatMessages.insertAdjacentHTML('beforeend', typingHtml);
                 chatMessages.scrollTop = chatMessages.scrollHeight;
-            }, 1000);
+            }, js_vars.typing_delay_ms);
         // handle bot messages
         } else if (event == 'botText') {
 
@@ -112,7 +112,7 @@
             
             // typing indicator delay
             const now = Date.now();
-            const elapsed = typingDate ? (now - typingDate) : MIN_TYPING_MS;
+            const elapsed = typingDate ? (now - typingDate) : js_vars.min_typing_ms;
             const delay = Math.max(0, js_vars.min_typing_ms - elapsed);
 
             // Add bot response after a 2 seconds delay

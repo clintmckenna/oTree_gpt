@@ -224,6 +224,7 @@ class chat(Page):
     @staticmethod
     def js_vars(player):
         return dict(
+            typing_delay_ms = 1000,
             min_typing_ms=2000
         )
     
