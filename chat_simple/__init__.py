@@ -19,6 +19,7 @@ class C(BaseConstants):
     NAME_IN_URL = 'chat_simple'
     PLAYERS_PER_GROUP = None
     NUM_ROUNDS = 1
+    SHOW_HISTORY = True
 
     # LLM vars
     ## bot label and temp
@@ -229,7 +230,22 @@ class chat(Page):
     # vars that we will pass to chat.html
     @staticmethod
     def vars_for_template(player):
+        botParty = player.botParty
+        if botParty == 'Republican':
+            botClass = 'redText'
+        elif botParty == 'Democrat':
+            botClass = 'blueText'
+        else:
+            botClass = 'miscText'
+        cached = player.cachedMessages
+        if cached and cached != '[]':
+            cached_messages = json.loads(cached)
+        else:
+            cached_messages = []
         return dict(
+            show_history = C.SHOW_HISTORY,
+            botClass = botClass, 
+            cached_messages= cached_messages,
             botParty = player.botParty,
         )
 
