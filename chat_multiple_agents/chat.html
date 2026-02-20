@@ -168,7 +168,7 @@
             const sender = data.sender;
             // const currentPlayer = data.currentPlayer;
             const phase = data.phase;
-            
+
             var botclass;
             if (sender == js_vars.bot_label2) {
                 botclass = 'moderatorText';
@@ -211,9 +211,13 @@
           
                 
                 // replace with bot response
+                var senderLabel = sender;
+                if (sender == js_vars.bot_label2) {
+                    senderLabel = 'Moderator';
+                }
                 let botHtml = `
                     <div class="message botMsg ${botclass}" id="${botMsgId}" data-author="${sender}">
-                        <strong>${sender}<br></strong> ${text}
+                        <strong>${senderLabel}<br></strong> ${text}
                         ${js_vars.allow_reactions ? `
                         <div class="message-reaction-bar">
                             ${js_vars.emojis.map(emoji => 
@@ -358,6 +362,35 @@
                     <strong>System<br></strong>
                     Please send a message to begin the conversation.
                 </div>
+
+
+                    {{ if cached_messages and show_history }}
+                        {{ for msg in cached_messages }}
+                            {{ if msg.sender == 'user' }}     
+                                {{ if msg.label == currentPlayer }}               
+                                <div class="message selfMsg" >
+                                    <strong>You<br></strong> {{ msg.text }}
+                                </div>    
+                                {{ else }}
+                                <div class="message otherMsg" >
+                                    <strong>{{ msg.label }}<br></strong> {{ msg.text }}
+                                </div>    
+                                {{ endif }}
+                            {{ endif }}
+                            {{ if 'assistant' in msg.sender }}
+                                {{ if msg.label == bot_label2 }}
+                                <div class="message botMsg moderatorText" >
+                                    <strong>Moderator<br></strong> {{ msg.text }}
+                                </div>
+                                {{ else }}
+                                <div class="message botMsg" >
+                                    <strong>Bot<br></strong> {{ msg.text }}
+                                </div>
+                                {{ endif }}
+                            {{ endif }}
+                        {{ endfor }}
+                    {{ endif }}
+                            
             </div>
         
             <div class='inputBox'>

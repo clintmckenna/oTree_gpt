@@ -38,6 +38,11 @@ SESSION_CONFIGS = [
          num_demo_participants=1,
      ),
      dict(
+         name='chat_2humans1bot',
+         app_sequence=['chat_2humans1bot',],
+         num_demo_participants=2,
+     ),
+     dict(
          name='chat_japanese',
          app_sequence=['chat_japanese',],
          num_demo_participants=100,  # デモ参加者数を増やして繰り返しテスト可能に

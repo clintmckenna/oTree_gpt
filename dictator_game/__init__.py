@@ -25,17 +25,21 @@ class C(BaseConstants):
     ALLOW_REACTIONS = True
     EMOJIS = ['👍', '👎', '❤️',]
 
+    # chat history on refresh
+    SHOW_HISTORY = True
+
     # LLM vars
-    ## bot label and temp
+    ## bot label and temperature
 
     ### temperature (range 0 - 2)
     ### this sets the bot's creativity in responses, with higher values being more creative and less deterministic
     ### https://platform.openai.com/docs/api-reference/completions#completions/create-temperature
-    #### moved this to function input
-
-    ### pariticpant bot info
-    BOT_LABEL = 'Bot'
+    #### not used in gpt-5+ unless reasoning set to none
     BOT_TEMP = 1.0
+
+    ## reasoning level for supported models
+    ## this can be set to 'none', 'minimal', 'low', 'medium', or 'high'
+    REASONING_LVL = 'none'
     
     ## openAI key
     OPENAI_KEY = environ.get('OPENAI_KEY')
@@ -45,6 +49,7 @@ class C(BaseConstants):
     ## https://platform.openai.com/docs/models
     ## IMPORTANT: for this app, you must use a model that supports structured output
     MODEL = "gpt-4o-mini"
+
  
     ## set system prompt for agents
     ## according to OpenAI's documentation, this should be less than ~1500 words
@@ -56,17 +61,17 @@ class C(BaseConstants):
     - a message Identifer (string)
     - instructions for responding
     - a current trust rating (integer)
-    - text you will be responding to (string)
+    - the conversation message history so far (string)
     - reactions that users have made to different messages (in the 'reactions' field) (string)
 
-    IMPORTANT: This list will be the entire message history between all actors in a conversation. Messages sent by you are labeled in the 'Sender' field as {BOT_LABEL}. Other actors will be labeled differently (e.g., 'P1', 'B1', etc.).
+    IMPORTANT: This list will be the entire message history between all actors in a conversation. Messages sent by you are labeled in the 'Sender' field as your assigned label. Other actors will be labeled differently (e.g., 'P1', 'B1', etc.).
     
-    You must actively monitor and acknowledge reactions to messages. The following reactions are possible: {', '.join(EMOJIS)}
-    When you see any of these reactions in the json, incorporate them naturally into your responses.
+    Participants may have added reactions to different messages. The following reactions are possible: {', '.join(EMOJIS)}
     
     As output, you MUST provide a json object with:
     - 'sender': your assigned sender identifier
     - 'msgId': your assigned message ID
+    - 'tone': your assigned tone
     - 'perceptionDiff': your assigned perception difference based on the user's message
     - 'trustRating': your assigned trust rating
     - 'decision': your assigned decision
@@ -83,6 +88,7 @@ class C(BaseConstants):
 class MsgOutputSchema(BaseModel):
     sender: str
     msgId: str
+    tone: str
     perceptionDiff: int
     trustRating: int
     decision: bool
@@ -91,15 +97,14 @@ class MsgOutputSchema(BaseModel):
 
 
 # function to run messages 
-async def runGPT(inputMessage, trustRating):
+async def runGPT(inputDat):
 
-    # grab bot vars from constants
+    # grab bot vars from constants and inputDat
     botTemp = C.BOT_TEMP
-    botLabel = C.BOT_LABEL
     botPrompt = C.SYS_BOT
-    
-    # grab trust rating
-    lastTrustRating = trustRating
+    botLabel = inputDat['botLabel']
+    tone = inputDat['tone']
+    lastTrustRating = inputDat['trustRating']
 
     # assign message id and bot label
     dateNow = str(datetime.now(tz=timezone.utc).timestamp())
@@ -111,6 +116,7 @@ async def runGPT(inputMessage, trustRating):
         Provide a json object with the following schema (DO NOT CHANGE ASSIGNED VALUES):
             'sender': {botLabel} (string),
             'msgId': {botMsgId} (string), 
+            'tone': {tone} (string),
             'perceptionDiff': 'perceptionDiff': an integer value between and including -5 to 5, based on how trustworthy you think the user is based on their most recent message (integer),
             'trustRating': an integer sum of your previous trustRating ({lastTrustRating}) and your current perception difference (perceptionDiff) (integer),
             'decision': None (boolean),
@@ -118,33 +124,61 @@ async def runGPT(inputMessage, trustRating):
             'reactions': {json.dumps(reactionsDict)} (string)
     """
 
-    # overwrite instructions for each dictionary
-    for x in inputMessage:
-        x['instructions'] = json.dumps(instructions)
+    # add instructions to inputDat
+    inputDat['instructions'] = instructions
 
     # combine input message with assigned prompt
-    inputMsg = [{'role': 'system', 'content': botPrompt}] + inputMessage
+    inputMsg = [{'role': 'system', 'content': botPrompt}, {'role': 'user', 'content': json.dumps(inputDat)}]
 
     # openai client and response creation
     client = AsyncOpenAI(api_key=C.OPENAI_KEY)
-    response = await client.chat.completions.create(
-        model=C.MODEL,
-        temperature=botTemp,
-        messages=inputMsg,
-        response_format={
-            "type": "json_schema",
-            "json_schema": {
-                "name": "msg_output_schema",
-                "schema": MsgOutputSchema.model_json_schema(),
-            }
-        }
-    )
 
-    # grab text output
-    msgOutput = response.choices[0].message.content
+    # responses api with retries in case of rate limits
+    max_retries = 9
+    for attempt in range(max_retries):
+        try:
+            response = await client.responses.parse(
+                model=C.MODEL,
+                input=inputMsg,
+                text_format=MsgOutputSchema,
+            )
 
-    # return the response json
-    return msgOutput
+            # if model supports reasoning, include, otherwise dont
+            reasoning = {'effort': C.REASONING_LVL} if 'gpt-5' in C.MODEL else None
+            response.reasoning = reasoning
+
+            # if model supports temperature, include, otherwise dont
+            temperature = botTemp if 'gpt-4' in C.MODEL else None
+            response.temperature = temperature
+            return response.output_parsed
+
+        except Exception as e:
+            if attempt < max_retries - 1:
+                # exponential backoff with larger delays and jitter; honor server hint if present
+                base_delay = min(64, 2 ** (attempt + 1))
+                hinted = None
+                try:
+                    m = re.search(r"Please try again in\s+([0-9]+(?:\.[0-9]+)?)s", str(e))
+                    if m:
+                        hinted = float(m.group(1))
+                except Exception:
+                    hinted = None
+                delay = max(base_delay, hinted or 0) + random.uniform(0, 1.0)
+                botLabel = inputDat.get('botLabel', 'UNKNOWN')
+                try:
+                    print(f"[LLM][retry] runGPT for {botLabel}: {e}. Retrying in {delay:.1f}s (attempt {attempt+1}/{max_retries})")
+                except Exception:
+                    pass
+                await asyncio.sleep(delay)
+            else:
+                botLabel = inputDat.get('botLabel', 'UNKNOWN')
+                try:
+                    print(f"[LLM][error] runGPT for {botLabel}: giving up after {max_retries} attempts. Last error: {e}")
+                except Exception:
+                    pass
+                raise
+
+
 
 ########################################################
 # Models                                               #
@@ -169,6 +203,11 @@ def creating_session(subsession: Subsession):
         initialTrustRating = max(40, min(60, initialTrustRating))
         p.trustRating = initialTrustRating
 
+        # randomize tone for the conversation
+        # tones = ['friendly', 'sarcastic', 'UNHINGED']
+        tones = ['friendly', ]
+        tone = random.choice(tones)
+        p.tone = tone
 
 
 # group vars
@@ -177,6 +216,9 @@ class Group(BaseGroup):
 
 # player vars
 class Player(BasePlayer):
+
+    # tone for the bot
+    tone = models.StringField()
 
     # trust rating, overwritten as chat progresses
     trustRating = models.IntegerField()
@@ -197,10 +239,10 @@ class MessageData(ExtraModel):
     player = models.Link(Player)
 
     # msg info
+    tone = models.StringField()
     msgId = models.StringField()
     timestamp = models.StringField()
     sender = models.StringField()
-    fullText = models.StringField()
     msgText = models.StringField()
 
     # decision info
@@ -238,7 +280,6 @@ def custom_export(players):
         'perceptionDiff',
         'trustRating',
         'decision',
-        'fullText',
         'msgText',
         'reactionData'
     ]
@@ -251,12 +292,6 @@ def custom_export(players):
         player = m.player
         participant = player.participant
         session = player.session
-
-        # full text field
-        try:
-            fullText = json.loads(m.fullText)['content']
-        except:
-            fullText = m.fullText
 
         # get message reaction info as well
         try:
@@ -287,7 +322,6 @@ def custom_export(players):
             m.perceptionDiff,
             m.trustRating,
             m.decision,
-            fullText,
             m.msgText,
             reacts,
         ]
@@ -302,7 +336,7 @@ class chat(Page):
     form_model = 'player'
     timeout_seconds = 60
 
-    # vars that we will pass to chat.html
+    # vars that we will pass to chat.html (javascript)
     @staticmethod
     def js_vars(player):
 
@@ -318,7 +352,15 @@ class chat(Page):
             trustRating = player.trustRating,
         )
 
-    
+    # vars that we will pass to chat.html
+    @staticmethod
+    def vars_for_template(player):
+        return dict(
+            cached_messages = json.loads(player.cachedMessages),
+            show_history = C.SHOW_HISTORY,
+            currentPlayer = 'P' + str(player.id_in_group),
+        )
+
     # live method functions
     @staticmethod
     async def live_method(player: Player, data):
@@ -335,11 +377,15 @@ class chat(Page):
 
         # create current player identifier
         currentPlayer = 'P' + str(player.id_in_group)
+        botLabel = 'B' + str(player.id_in_group)
 
         # grab current trust rating and decision from data
         trustRating = player.trustRating
         decision = player.decision
         
+        # grab tone from data
+        tone = player.tone
+
         # handle different event types
         if 'event' in data:
 
@@ -358,18 +404,6 @@ class chat(Page):
 
                 # create message content with reactions and save to database
                 reactionsDict = {emoji: 0 for emoji in C.EMOJIS}
-                content = dict(
-                    sender=currentPlayer,
-                    msgId=msgId,
-                    instructions='',
-                    trustRating=trustRating,
-                    text=text,
-                    reactions=json.dumps(reactionsDict),
-                )
-                
-
-                # create message in LLM format
-                msg = {'role': 'user', 'content': json.dumps(content)}
 
                 # save to database
                 MessageData.create(
@@ -377,16 +411,21 @@ class chat(Page):
                     msgId=msgId,
                     timestamp=dateNow,
                     sender='Subject',
-                    fullText=json.dumps(msg),
+                    tone=tone,
                     msgText=text,
                     perceptionDiff=int(),
                     trustRating = trustRating,
                     decision = decision,
                 )
 
-
                 # add message to list
-                messages.append(msg)
+                messages.append({
+                    'sender': 'user',
+                    'label': currentPlayer,
+                    'msgId': msgId,
+                    'text': text,
+                    'reactions': json.dumps(reactionsDict),
+                })
                 
                 # update cache
                 player.cachedMessages = json.dumps(messages)
@@ -394,9 +433,10 @@ class chat(Page):
                 # return output to chat.html
                 yield {player.id_in_group: dict(
                     event='text',
+                    selfText=text,
                     sender=currentPlayer,
                     msgId=msgId,
-                    selfText=text,
+                    tone=tone,
                 )}
 
 
@@ -404,19 +444,28 @@ class chat(Page):
             elif event == 'botMsg':
 
                 # grab constants bot info
-                botId = C.BOT_LABEL
+                botId = botLabel
 
                 # run llm on input text
                 dateNow = str(datetime.now(tz=timezone.utc).timestamp())
-                botText = await runGPT(messages, trustRating)
+
+                # create inputDat and run api function
+                inputDat = dict(
+                    botLabel = botId,
+                    messages = messages,
+                    tone = tone,
+                    trustRating = trustRating,
+                )
+
+                botText = await runGPT(inputDat)
                 
                 # grab bot response data
-                botContent = json.loads(botText)
-                outputText = botContent['text']
-                botMsgId = botContent['msgId']
-                newPerceptionDiff = botContent['perceptionDiff']
-                newTrustRating = botContent['trustRating']
-                    
+                outputText = botText.text
+                botMsgId = botText.msgId
+                newPerceptionDiff = botText.perceptionDiff
+                newTrustRating = botText.trustRating
+                botTone = botText.tone
+                botReactions = botText.reactions
 
                 # here, we will calculate the decision from the trust rating and overwrite the bot's LLM output for this field
                 # you could alternatively just ask the LLM to make a decision, but you have more control this way
@@ -430,13 +479,6 @@ class chat(Page):
                 player.decision = newDecision
                 player.trustRating = newTrustRating
 
-                # overwrite None decision in botText with calculated decision
-                botContent['decision'] = newDecision
-                botText = json.dumps(botContent)
-
-                # create bot message
-                botMsg = {'role': 'assistant', 'content': botText}
-                
                 # save to database
                 MessageData.create(
                     player=player,
@@ -446,12 +488,17 @@ class chat(Page):
                     trustRating = newTrustRating,
                     perceptionDiff = newPerceptionDiff,
                     decision = newDecision,
-                    fullText=json.dumps(botMsg),
                     msgText=outputText,
                 )
 
                 # update cache with bot message
-                messages.append(botMsg)
+                messages.append({
+                    'sender': 'assistant',
+                    'label': botId,
+                    'msgId': botMsgId,
+                    'text': outputText,
+                    'reactions': json.dumps(botReactions),
+                })
                 player.cachedMessages = json.dumps(messages)
 
                 # return output to chat.html
@@ -501,8 +548,8 @@ class chat(Page):
                     # update reaction counts in message cache
                     # this function looks through the database to make sure that players can only react once for each emoji/message
                     for i, msg in enumerate(messages):
-                        content = json.loads(msg['content'])
-                        if content.get('msgId') == msgId:
+                        reactions = json.loads(msg['reactions'])
+                        if msg.get('msgId') == msgId:
                             reactionCounts = {emoji: 0 for emoji in C.EMOJIS}
                             msgReactions = MsgReactionData.filter(player=player, msgId=msgId)
                             countedUsers = {emoji: set() for emoji in C.EMOJIS}
@@ -510,8 +557,7 @@ class chat(Page):
                                 if reaction.target not in countedUsers[reaction.emoji]:
                                     reactionCounts[reaction.emoji] += 1
                                     countedUsers[reaction.emoji].add(reaction.target)
-                            content['reactions'] = json.dumps(reactionCounts)
-                            messages[i]['content'] = json.dumps(content)
+                            msg['reactions'] = json.dumps(reactionCounts)
                             break
 
                     # update cache

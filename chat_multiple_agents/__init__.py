@@ -25,6 +25,9 @@ class C(BaseConstants):
     ALLOW_REACTIONS = True
     EMOJIS = ['👍', '👎', '❤️',]
 
+    # chat history on refresh
+    SHOW_HISTORY = True
+
     # LLM vars
     ## bot label and temperature
 
@@ -43,6 +46,10 @@ class C(BaseConstants):
     ## openAI key
     OPENAI_KEY = environ.get('OPENAI_KEY')
 
+    ## reasoning level for supported models
+    ## this can be set to 'none', 'minimal', 'low', 'medium', or 'high'
+    REASONING_LVL = 'none'
+    
     ## model
     ## this is which gpt model to use, which have different prices and ability
     ## https://platform.openai.com/docs/models
@@ -57,17 +64,16 @@ class C(BaseConstants):
     You will also be moderated by another moderator agent. Pay attention to the messages from both your debate partner and the moderator.
 
     Each user input will be a nested list of json objects containing:
-    - their sender identifer, which shows who sent the message
-    - instructions for responding
-    - tone to use
-    - text you will be responding to
-    - reactions that users have made to different messages (in the 'reactions' field)
+    - their sender identifer, which shows who sent the message (string)
+    - instructions for responding (string)
+    - tone to use (string)
+    - the conversation message history so far (string)
+    - reactions that users have made to different messages (in the 'reactions' field) (string)
 
-    IMPORTANT: This list will be the entire message history between all actors in a conversation. Messages sent by you are labeled in the 'Sender' field as {BOT_LABEL1}. Other actors will be labeled differently (e.g., 'P1', 'B1', etc.).
+    IMPORTANT: This list will be the entire message history between all actors in a conversation. Messages sent by you are labeled in the 'Sender' field as your assigned label. Other actors will be labeled differently (e.g., 'P1', 'B1', etc.).
     
-    IMPORTANT: You must actively monitor and acknowledge reactions to messages. The following reactions are possible: {', '.join(EMOJIS)}
-    When you see any of these reactions in the json, incorporate them naturally into your responses.
-    
+    Participants may have added reactions to different messages. The following reactions are possible: {', '.join(EMOJIS)}
+
     As output, you MUST provide a json object with:
     - 'sender': your assigned sender identifier
     - 'msgId': your assigned message ID
@@ -88,18 +94,18 @@ class C(BaseConstants):
         - "The discussion could benefit from..."
     
     Each user input will be a list of json objects containing:
-    - their sender identifer, which shows who sent the message
-    - instructions for responding
-    - tone to use
-    - text you will be responding to
-    - reactions that users have made to different messages (in the 'reactions' field)
+    - their sender identifer, which shows who sent the message (string)
+    - instructions for responding (string)
+    - tone to use (string)
+    - the conversation message history so far (string)
+    - reactions that users have made to different messages (in the 'reactions' field) (string)
 
     As output, you MUST provide a json object with:
-    - 'sender': your assigned sender identifier
-    - 'msgId': your assigned message ID
-    - 'tone': your assigned tone
-    - 'text': your response (limit to 300 characters)
-    - 'reactions': your assigned reactions value"""
+    - 'sender': your assigned sender identifier (string)
+    - 'msgId': your assigned message ID (string)
+    - 'tone': your assigned tone (string)
+    - 'text': your response (limit to 300 characters) (string)
+    - 'reactions': your assigned reactions value (string)"""
 
 
 ########################################################
@@ -118,12 +124,13 @@ class MsgOutputSchema(BaseModel):
 ## when triggered, this function will run the system prompt and the user message, which will contain the entire message history, rather than building on dialogue one line at a time
 
 # participant bot llm function
-async def runParticipantGPT(inputMessage, tone):
+async def runParticipantGPT(inputDat):
 
-    # grab bot vars from constants
+    # grab bot vars from constants and inputDat
     botTemp = C.BOT_TEMP1
-    botLabel = C.BOT_LABEL1
     botPrompt = C.SYS_PARTICIPANT
+    botLabel = inputDat['botLabel']
+    tone = inputDat['tone']
 
     # assign message id and bot label
     dateNow = str(datetime.now(tz=timezone.utc).timestamp())
@@ -132,7 +139,7 @@ async def runParticipantGPT(inputMessage, tone):
     # grab text that participant inputs and format for chatgpt
     reactionsDict = {emoji: 0 for emoji in C.EMOJIS}
     instructions = f"""
-        Provide a json object with the following schema (DO NOT CHANGE ASSIGNED VALUES):
+        You are {botLabel}. Provide a json object with the following schema (DO NOT CHANGE ASSIGNED VALUES):
             'sender': {botLabel} (string),
             'msgId': {botMsgId} (string), 
             'tone': {tone} (string), 
@@ -140,47 +147,69 @@ async def runParticipantGPT(inputMessage, tone):
             'reactions': {json.dumps(reactionsDict)} (string)
     """
 
-    # overwrite instructions for each dictionary
-    for x in inputMessage:
-        x['instructions'] = json.dumps(instructions)
+    # add instructions to inputDat
+    inputDat['instructions'] = instructions
 
-
-    # create input message with a nested structure
-    nestedInput = [{'role': 'user', 'content': json.dumps(inputMessage)}]
-    
     # combine input message with assigned prompt
-    inputMsg = [{'role': 'system', 'content': botPrompt}] + nestedInput
-
+    inputMsg = [{'role': 'system', 'content': botPrompt}, {'role': 'user', 'content': json.dumps(inputDat)}]
 
     # openai client and response creation
     client = AsyncOpenAI(api_key=C.OPENAI_KEY)
-    response = await client.chat.completions.create(
-        model=C.MODEL,
-        temperature=botTemp,
-        messages=inputMsg,
-        response_format={
-            "type": "json_schema",
-            "json_schema": {
-                "name": "msg_output_schema",
-                "schema": MsgOutputSchema.model_json_schema(),
-            }
-        }
-    )
 
-    # grab text output
-    msgOutput = response.choices[0].message.content
+    # responses api with retries in case of rate limits
+    max_retries = 9
+    for attempt in range(max_retries):
+        try:
+            response = await client.responses.parse(
+                model=C.MODEL,
+                input=inputMsg,
+                text_format=MsgOutputSchema,
+            )
 
-    # return the response json
-    return msgOutput
+            # if model supports reasoning, include, otherwise dont
+            reasoning = {'effort': C.REASONING_LVL} if 'gpt-5' in C.MODEL else None
+            response.reasoning = reasoning
+
+            # if model supports temperature, include, otherwise dont
+            temperature = botTemp if 'gpt-4' in C.MODEL else None
+            response.temperature = temperature
+            return response.output_parsed
+
+        except Exception as e:
+            if attempt < max_retries - 1:
+                # exponential backoff with larger delays and jitter; honor server hint if present
+                base_delay = min(64, 2 ** (attempt + 1))
+                hinted = None
+                try:
+                    m = re.search(r"Please try again in\s+([0-9]+(?:\.[0-9]+)?)s", str(e))
+                    if m:
+                        hinted = float(m.group(1))
+                except Exception:
+                    hinted = None
+                delay = max(base_delay, hinted or 0) + random.uniform(0, 1.0)
+                botLabel = inputDat.get('botLabel', 'UNKNOWN')
+                try:
+                    print(f"[LLM][retry] runGPT for {botLabel}: {e}. Retrying in {delay:.1f}s (attempt {attempt+1}/{max_retries})")
+                except Exception:
+                    pass
+                await asyncio.sleep(delay)
+            else:
+                botLabel = inputDat.get('botLabel', 'UNKNOWN')
+                try:
+                    print(f"[LLM][error] runGPT for {botLabel}: giving up after {max_retries} attempts. Last error: {e}")
+                except Exception:
+                    pass
+                raise
 
 
 # run moderator llm function
-async def runModeratorGPT(inputMessage):
+async def runModeratorGPT(inputDat):
 
-    # grab bot vars from constants
+    # grab bot vars from constants and inputDat
     botTemp = C.BOT_TEMP2
-    botLabel = C.BOT_LABEL2
     botPrompt = C.SYS_MODERATOR
+    botLabel = inputDat['botLabel']
+    tone = inputDat['tone']
 
     # assign message id and bot label
     dateNow = str(datetime.now(tz=timezone.utc).timestamp())
@@ -189,46 +218,66 @@ async def runModeratorGPT(inputMessage):
     # grab text that participant inputs and format for chatgpt
     reactionsDict = {emoji: 0 for emoji in C.EMOJIS}
     instructions = f"""
-        Provide a json object with the following schema (DO NOT CHANGE ASSIGNED VALUES):
+        You are {botLabel}, the MODERATOR. You do NOT participate in the debate. Your role is to facilitate and coach the discussion. Provide a json object with the following schema (DO NOT CHANGE ASSIGNED VALUES):
             'sender': {botLabel} (string),
             'msgId': {botMsgId} (string), 
-            'tone': '' (string), 
-            'text': Your response to the messages since your last message (string), 
+            'tone': moderator (string), 
+            'text': Your moderation feedback on the recent exchange (string), 
             'reactions': {json.dumps(reactionsDict)} (string)
     """
-
-    # overwrite instructions for each dictionary
-    for x in inputMessage:
-        x['instructions'] = json.dumps(instructions)
-
-
-    # create input message with a nested structure
-    nestedInput = [{'role': 'user', 'content': json.dumps(inputMessage)}]
+    # add instructions to inputDat
+    inputDat['instructions'] = instructions
 
     # combine input message with assigned prompt
-    inputMsg = [{'role': 'system', 'content': botPrompt}] + nestedInput
-
+    inputMsg = [{'role': 'system', 'content': botPrompt}, {'role': 'user', 'content': json.dumps(inputDat)}]
 
     # openai client and response creation
     client = AsyncOpenAI(api_key=C.OPENAI_KEY)
-    response = await client.chat.completions.create(
-        model=C.MODEL,
-        temperature=botTemp,
-        messages=inputMsg,
-        response_format={
-            "type": "json_schema",
-            "json_schema": {
-                "name": "msg_output_schema",
-                "schema": MsgOutputSchema.model_json_schema(),
-            }
-        }
-    )
 
-    # grab text output
-    msgOutput = response.choices[0].message.content
+    # responses api with retries in case of rate limits
+    max_retries = 9
+    for attempt in range(max_retries):
+        try:
+            response = await client.responses.parse(
+                model=C.MODEL,
+                input=inputMsg,
+                text_format=MsgOutputSchema,
+            )
 
-    # return the response json
-    return msgOutput
+            # if model supports reasoning, include, otherwise dont
+            reasoning = {'effort': C.REASONING_LVL} if 'gpt-5' in C.MODEL else None
+            response.reasoning = reasoning
+
+            # if model supports temperature, include, otherwise dont
+            temperature = botTemp if 'gpt-4' in C.MODEL else None
+            response.temperature = temperature
+            return response.output_parsed
+
+        except Exception as e:
+            if attempt < max_retries - 1:
+                # exponential backoff with larger delays and jitter; honor server hint if present
+                base_delay = min(64, 2 ** (attempt + 1))
+                hinted = None
+                try:
+                    m = re.search(r"Please try again in\s+([0-9]+(?:\.[0-9]+)?)s", str(e))
+                    if m:
+                        hinted = float(m.group(1))
+                except Exception:
+                    hinted = None
+                delay = max(base_delay, hinted or 0) + random.uniform(0, 1.0)
+                botLabel = inputDat.get('botLabel', 'UNKNOWN')
+                try:
+                    print(f"[LLM][retry] runGPT for {botLabel}: {e}. Retrying in {delay:.1f}s (attempt {attempt+1}/{max_retries})")
+                except Exception:
+                    pass
+                await asyncio.sleep(delay)
+            else:
+                botLabel = inputDat.get('botLabel', 'UNKNOWN')
+                try:
+                    print(f"[LLM][error] runGPT for {botLabel}: giving up after {max_retries} attempts. Last error: {e}")
+                except Exception:
+                    pass
+                raise
 
 
 ########################################################
@@ -264,13 +313,13 @@ class Player(BasePlayer):
     # tone for the bot
     tone = models.StringField()
 
-    # phase number
-    phase = models.IntegerField(initial=0)
-
     # cache of all messages in conversation
     cachedMessages = models.LongStringField(initial='[]')
 
     # turn tracking 
+    
+    ## phase number
+    phase = models.IntegerField(initial=0)
     ## message count when participant bot last spoke
     lastParticipantBotMsg = models.IntegerField(initial=0)  
     ## message count when moderator bot last spoke
@@ -291,7 +340,8 @@ def can_bot_speak(player: Player, bot_type: str) -> bool:
         return True
         
     # participant bot
-    if bot_type == C.BOT_LABEL1:  
+    ## check if bot contains MODERATOR_LABEL
+    if 'M' not in bot_type:
         # can speak if user has spoken since its last message
         messages_since_last = msg_count - player.lastParticipantBotMsg
         return player.lastUserMsg > player.lastParticipantBotMsg
@@ -320,7 +370,6 @@ class MessageData(ExtraModel):
     timestamp = models.StringField()
     sender = models.StringField()
     tone = models.StringField()
-    fullText = models.StringField()
     msgText = models.StringField()
 
 # message reaction information
@@ -351,7 +400,6 @@ def custom_export(players):
         'timestamp',
         'sender',
         'tone',
-        'fullText',
         'msgText',
         'reactionData'
     ]
@@ -364,12 +412,6 @@ def custom_export(players):
         player = m.player
         participant = player.participant
         session = player.session
-
-        # full text field
-        try:
-            fullText = json.loads(m.fullText)['content']
-        except:
-            fullText = m.fullText
 
         # get message reaction info as well
         try:
@@ -398,7 +440,6 @@ def custom_export(players):
             m.timestamp,
             m.sender,
             m.tone,
-            fullText,
             m.msgText,
             reacts,
         ]
@@ -413,19 +454,36 @@ class chat(Page):
     form_model = 'player'
     timeout_seconds = 300
 
-    # vars that we will pass to chat.html
+    # vars that we will pass to chat.html (javascript)
     @staticmethod
     def js_vars(player):
         # playerId as seen in chat
         currentPlayer = 'P' + str(player.id_in_group)
+        botLabel = 'B' + str(player.id_in_group)
+        modLabel = 'M' + str(player.id_in_group)
         
         return dict(
             id_in_group=player.id_in_group,
             playerId=currentPlayer,
             allow_reactions=C.ALLOW_REACTIONS,
             emojis=C.EMOJIS,
-            bot_label1=C.BOT_LABEL1,
-            bot_label2=C.BOT_LABEL2,
+            bot_label1=botLabel,
+            bot_label2=modLabel,
+        )
+
+    # vars that we will pass to chat.html
+    @staticmethod
+    def vars_for_template(player):
+        # playerId as seen in chat
+        currentPlayer = 'P' + str(player.id_in_group)
+        botLabel = 'B' + str(player.id_in_group)
+        modLabel = 'M' + str(player.id_in_group)
+        return dict(
+            cached_messages = json.loads(player.cachedMessages),
+            show_history = C.SHOW_HISTORY,
+            currentPlayer = currentPlayer,
+            bot_label1 = botLabel,
+            bot_label2 = modLabel,
         )
 
     # live method functions
@@ -444,6 +502,8 @@ class chat(Page):
 
         # create current player identifier
         currentPlayer = 'P' + str(player.id_in_group)
+        botLabel = 'B' + str(player.id_in_group)
+        modLabel = 'M' + str(player.id_in_group)
 
         # grab tone from data
         tone = player.tone
@@ -457,24 +517,16 @@ class chat(Page):
             # handle player input logic
             if event == 'text':
                 
-                # get data from request
-                text = data.get('text', '')
-                currentPlayer = 'P' + str(player.id_in_group)
-                messages = json.loads(player.cachedMessages)
-                
                 # create message id
                 dateNow = str(datetime.now(tz=timezone.utc).timestamp())
-                msgId = currentPlayer + '-' + dateNow
+                msgId = currentPlayer + '-' + str(dateNow)
                 
-                # create message
-                msg = {'role': 'user', 'content': json.dumps({
-                    'sender': currentPlayer,
-                    'msgId': msgId,
-                    'tone': tone,
-                    'text': text,
-                    'reactions': json.dumps({emoji: 0 for emoji in C.EMOJIS})
-                })}
-                
+                # grab text and phase info
+                text = data['text']
+
+                # create message content with reactions and save to database
+                reactionsDict = {emoji: 0 for emoji in C.EMOJIS}
+      
                 # save to database
                 MessageData.create(
                     player=player,
@@ -482,20 +534,26 @@ class chat(Page):
                     msgId=msgId,
                     timestamp=dateNow,
                     tone=tone,
-                    fullText=json.dumps(msg),
                     msgText=text,
                 )
+
                 
-                # update message tracking
-                player.lastUserMsg = player.messageCount
-                player.messageCount += 1
-                
-                # append to messages
-                messages.append(msg)
+                # add message to list
+                messages.append({
+                    'sender': 'user',
+                    'label': currentPlayer,
+                    'msgId': msgId,
+                    'text': text,
+                    'reactions': json.dumps(reactionsDict),
+                })
                 
                 # update cache
                 player.cachedMessages = json.dumps(messages)
-                
+
+                # update message tracking
+                player.lastUserMsg = player.messageCount
+                player.messageCount += 1
+                                
                 # return output to chat.html
                 yield {player.id_in_group: dict(
                     event='text',
@@ -512,50 +570,62 @@ class chat(Page):
                 # get data from request
                 botId = data.get('botId')
                 isGreeting = data.get('isGreeting', False)
-                
+
                 # Skip if no botId provided
                 if not botId:  
                     yield {player.id_in_group: dict()}
                     
-                # get messages
-                messages = json.loads(player.cachedMessages)
+                # create inputDat and run api function
+                inputDat = dict(
+                    botLabel = botId,
+                    messages = messages,
+                    tone = tone,
+                )
                 
                 # handle bot greetings (first message)
                 if isGreeting:
                     dateNow = str(datetime.now(tz=timezone.utc).timestamp())
                     
                     # run function to generate greetings
-                    if botId == C.BOT_LABEL1:
-                        botText = await runParticipantGPT(messages, tone)
+                    if botId == botLabel:
+                        botText = await runParticipantGPT(inputDat)
                     else:
-                        botText = await runModeratorGPT(messages)
+                        botText = await runModeratorGPT(inputDat)
                         
-                    # extract output
-                    botContent = json.loads(botText)
-                    outputText = botContent['text']
-                    botMsgId = botContent['msgId']
-                    botMsg = {'role': 'assistant', 'content': botText}
-                    
+                    # grab bot response data
+                    outputText = botText.text
+                    botMsgId = botText.msgId
+                    botTone = botText.tone
+                    botReactions = botText.reactions
+
+                    # save to database
                     MessageData.create(
                         player=player,
                         sender=botId,
                         msgId=botMsgId,
                         timestamp=dateNow,
-                        tone=tone,
-                        fullText=json.dumps(botMsg),
+                        tone=botTone,
                         msgText=outputText,
                     )
-                    messages.append(botMsg)
-                    
+                    # update cache with bot message
+                    sndr = f'assistant ({botId})' if 'M' not in botId else 'assistant (Moderator)'
+                    messages.append({
+                        'sender': sndr,
+                        'label': botId,
+                        'msgId': botMsgId,
+                        'text': outputText,
+                        'reactions': json.dumps(botReactions),
+                    })
+                    player.cachedMessages = json.dumps(messages)
+
                     # update player message count
-                    if botId == C.BOT_LABEL1:
+                    if botId == botLabel:
                         player.lastParticipantBotMsg = player.messageCount
                     else:
                         player.lastModeratorBotMsg = player.messageCount
                     
                     # increment message count
                     player.messageCount += 1
-                    player.cachedMessages = json.dumps(messages)
                     
                     # return data to chat.html
                     yield {player.id_in_group: dict(
@@ -572,7 +642,6 @@ class chat(Page):
                     
                     # get last message
                     lastMsg = messages[-1]
-                    lastMsg = json.loads(lastMsg['content'])
                     lastSender = lastMsg['sender']
                     
                     # if last message was from this bot, wait
@@ -582,34 +651,42 @@ class chat(Page):
                     # if not, generate bot response
 
                     # run appropriate bot
-                    if botId == C.BOT_LABEL1:
-                        botText = await runParticipantGPT(messages, tone)
+                    dateNow = str(datetime.now(tz=timezone.utc).timestamp())
+                    if botId == botLabel:
+                        botText = await runParticipantGPT(inputDat)
                         player.lastParticipantBotMsg = player.messageCount
                     else:
-                        botText = await runModeratorGPT(messages)
+                        botText = await runModeratorGPT(inputDat)
                         player.lastModeratorBotMsg = player.messageCount
                     
-                    # process bot response
-                    botContent = json.loads(botText)
-                    outputText = botContent['text']
-                    botMsgId = botContent['msgId']
-                    botMsg = {'role': 'assistant', 'content': botText}
-                    
+                    # grab bot response data
+                    outputText = botText.text
+                    botMsgId = botText.msgId
+                    botTone = botText.tone
+                    botReactions = botText.reactions
+
                     # save to database
                     MessageData.create(
                         player=player,
                         sender=botId,
                         msgId=botMsgId,
-                        tone=tone,
-                        fullText=json.dumps(botMsg),
+                        timestamp=dateNow,
+                        tone=botTone,
                         msgText=outputText,
                     )
                     
                     # update message count and cache
+                    sndr = f'assistant ({botId})' if 'M' not in botId else 'assistant (Moderator)'
                     player.messageCount += 1
-                    messages.append(botMsg)
-                    player.cachedMessages = json.dumps(messages)
-                    
+                    messages.append({
+                        'sender': sndr,
+                        'label': botId,
+                        'msgId': botMsgId,
+                        'text': outputText,
+                        'reactions': json.dumps(botReactions),
+                    })
+                    player.cachedMessages = json.dumps(messages)   
+
                     # return data to chat.html
                     yield {player.id_in_group: dict(
                         event='botText',
@@ -660,8 +737,8 @@ class chat(Page):
                     # update reaction counts in message cache
                     # this function looks through the database to make sure that players can only react once for each emoji/message
                     for i, msg in enumerate(messages):
-                        content = json.loads(msg['content'])
-                        if content.get('msgId') == msgId:
+                        reactions = json.loads(msg['reactions'])
+                        if msg.get('msgId') == msgId:
                             reactionCounts = {emoji: 0 for emoji in C.EMOJIS}
                             msgReactions = MsgReactionData.filter(player=player, msgId=msgId)
                             countedUsers = {emoji: set() for emoji in C.EMOJIS}
@@ -669,8 +746,7 @@ class chat(Page):
                                 if reaction.target not in countedUsers[reaction.emoji]:
                                     reactionCounts[reaction.emoji] += 1
                                     countedUsers[reaction.emoji].add(reaction.target)
-                            content['reactions'] = json.dumps(reactionCounts)
-                            messages[i]['content'] = json.dumps(content)
+                            msg['reactions'] = json.dumps(reactionCounts)
                             break
 
                     # update cache
