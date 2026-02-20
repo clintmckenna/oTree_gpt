@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from datetime import datetime, timezone
 import httpx
 import base64
+from elevenlabs.client import ElevenLabs
 import boto3
 import asyncio
 
@@ -36,10 +37,13 @@ class C(BaseConstants):
     ALLOW_REACTIONS = True
     EMOJIS = ['👍', '👎', '❤️',]
 
+    # chat history on refresh
+    SHOW_HISTORY = True
+
     ## save using s3 vs locally
     ### unless using locally in lab, you should always save to s3 bucket or similar for security
     ### if set to false, audio will be saved locally to static folder
-    AMAZON_S3 = True 
+    AMAZON_S3 = False 
 
     ## Amazon S3 keys
     AMAZON_S3_KEY = environ.get('AMAZON_S3_KEY')
@@ -49,16 +53,16 @@ class C(BaseConstants):
     ## openAI key
     OPENAI_KEY = environ.get('OPENAI_KEY')
 
-    ## bot label and temperature
-
     ### temperature (range 0 - 2)
-    ### this sets the bot's creativity in responses, with higher values being more creative
+    ### this sets the bot's creativity in responses, with higher values being more creative and less deterministic
     ### https://platform.openai.com/docs/api-reference/completions#completions/create-temperature
-
-    ### pariticpant bot info
-    BOT_LABEL = 'Bot'
+    #### not used in gpt-5+ unless reasoning set to none
     BOT_TEMP = 1.0
-    
+
+    ## reasoning level for supported models
+    ## this can be set to 'none', 'minimal', 'low', 'medium', or 'high'
+    REASONING_LVL = 'none'
+
     ## model
     ## this is which gpt model to use, which have different prices and ability
     ## https://platform.openai.com/docs/models
@@ -74,13 +78,12 @@ class C(BaseConstants):
         - message Identifer (string)
         - instructions for responding (string)
         - tone to use (string)
-        - text you will be responding to (string)
+        - the conversation message history so far (string)
         - reactions that users have made to different messages (in the 'reactions' field) (string)
 
-        IMPORTANT: This list will be the entire message history between all actors in a conversation. Messages sent by you are labeled in the 'Sender' field as {BOT_LABEL}. Other actors will be labeled differently (e.g., 'P1', 'B1', etc.).
+        IMPORTANT: This list will be the entire message history between all actors in a conversation. Messages sent by you are labeled in the 'Sender' field as your assigned label. Other actors will be labeled differently (e.g., 'P1', 'B1', etc.).
         
-        You must actively monitor and acknowledge reactions to messages. The following reactions are possible: {', '.join(EMOJIS)}
-        When you see any of these reactions in the json, incorporate them naturally into your responses.
+        Participants may have added reactions to different messages. The following reactions are possible: {', '.join(EMOJIS)}
         
         As output, you MUST provide a json object with:
         - 'sender': your assigned sender identifier
@@ -110,13 +113,14 @@ class MsgOutputSchema(BaseModel):
     reactions: str
 
 # function to run messages 
-async def runGPT(inputMessage, tone):
+async def runGPT(inputDat):
 
-    # grab bot vars from constants
+    # grab bot vars from constants and inputDat
     botTemp = C.BOT_TEMP
-    botLabel = C.BOT_LABEL
     botPrompt = C.SYS_BOT
-    
+    botLabel = inputDat['botLabel']
+    tone = inputDat['tone']
+
     # assign message id and bot label
     dateNow = str(datetime.now(tz=timezone.utc).timestamp())
     botMsgId = botLabel + '-' + str(dateNow)
@@ -124,7 +128,7 @@ async def runGPT(inputMessage, tone):
     # grab text that participant inputs and format for chatgpt
     reactionsDict = {emoji: 0 for emoji in C.EMOJIS}
     instructions = f"""
-        Provide a json object with the following schema (DO NOT CHANGE ASSIGNED VALUES):
+        You are {botLabel}. Provide a json object with the following schema (DO NOT CHANGE ASSIGNED VALUES):
             'sender': {botLabel} (string),
             'msgId': {botMsgId} (string), 
             'tone': {tone} (string), 
@@ -132,52 +136,79 @@ async def runGPT(inputMessage, tone):
             'reactions': {json.dumps(reactionsDict)} (string)
     """
 
-    # overwrite instructions for each dictionary
-    for x in inputMessage:
-        x['instructions'] = json.dumps(instructions)
+    # add instructions to inputDat
+    inputDat['instructions'] = instructions
 
     # combine input message with assigned prompt
-    inputMsg = [{'role': 'system', 'content': botPrompt}] + inputMessage
+    inputMsg = [{'role': 'system', 'content': botPrompt}, {'role': 'user', 'content': json.dumps(inputDat)}]
 
     # openai client and response creation
     client = AsyncOpenAI(api_key=C.OPENAI_KEY)
-    response = await client.chat.completions.create(
-        model=C.MODEL,
-        temperature=botTemp,
-        messages=inputMsg,
-        response_format={
-            "type": "json_schema",
-            "json_schema": {
-                "name": "msg_output_schema",
-                "schema": MsgOutputSchema.model_json_schema(),
-            }
-        }
-    )
 
-    # grab text output
-    msgOutput = response.choices[0].message.content
+    # responses api with retries in case of rate limits
+    max_retries = 9
+    for attempt in range(max_retries):
+        try:
+            response = await client.responses.parse(
+                model=C.MODEL,
+                input=inputMsg,
+                text_format=MsgOutputSchema,
+            )
 
-    # return the response json
-    return msgOutput
+            # if model supports reasoning, include, otherwise dont
+            reasoning = {'effort': C.REASONING_LVL} if 'gpt-5' in C.MODEL else None
+            response.reasoning = reasoning
+
+            # if model supports temperature, include, otherwise dont
+            temperature = botTemp if 'gpt-4' in C.MODEL else None
+            response.temperature = temperature
+            return response.output_parsed
+
+        except Exception as e:
+            if attempt < max_retries - 1:
+                # exponential backoff with larger delays and jitter; honor server hint if present
+                base_delay = min(64, 2 ** (attempt + 1))
+                hinted = None
+                try:
+                    m = re.search(r"Please try again in\s+([0-9]+(?:\.[0-9]+)?)s", str(e))
+                    if m:
+                        hinted = float(m.group(1))
+                except Exception:
+                    hinted = None
+                delay = max(base_delay, hinted or 0) + random.uniform(0, 1.0)
+                botLabel = inputDat.get('botLabel', 'UNKNOWN')
+                try:
+                    print(f"[LLM][retry] runGPT for {botLabel}: {e}. Retrying in {delay:.1f}s (attempt {attempt+1}/{max_retries})")
+                except Exception:
+                    pass
+                await asyncio.sleep(delay)
+            else:
+                botLabel = inputDat.get('botLabel', 'UNKNOWN')
+                try:
+                    print(f"[LLM][error] runGPT for {botLabel}: giving up after {max_retries} attempts. Last error: {e}")
+                except Exception:
+                    pass
+                raise
 
 
 ########################################################
 # ElevenLabs Setup                                     #
 ########################################################
 
-# function to get audio from elevenlabs
+# httpx client for whisper transcription
 HTTPX_CLIENT = httpx.AsyncClient(timeout=30)
-async def runVoiceAPI(inputMessage: str, voice_id: str) -> bytes:
-    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
-    headers = {
-        "xi-api-key": C.ELEVENLABS_KEY,
-        "Content-Type": "application/json",
-    }
-    payload = {"text": inputMessage}
 
-    resp = await HTTPX_CLIENT.post(url, headers=headers, json=payload)
-    resp.raise_for_status()
-    return resp.content  # audio bytes
+# function to get audio from elevenlabs
+elevenlabs_client = ElevenLabs(api_key=C.ELEVENLABS_KEY)
+async def runVoiceAPI(inputMessage: str, voice_id: str) -> bytes:
+    audio_iter = elevenlabs_client.text_to_speech.convert(
+        text=inputMessage,
+        voice_id=voice_id,
+        model_id="eleven_multilingual_v2",
+        output_format="mp3_44100_128",
+    )
+    # collect generator chunks into bytes
+    return b"".join(audio_iter)
 
 # for further prompt formatting, check out this page:
 # https://elevenlabs.io/docs/best-practices/prompting
@@ -293,7 +324,6 @@ class MessageData(ExtraModel):
     timestamp = models.StringField()
     sender = models.StringField()
     tone = models.StringField()
-    fullText = models.StringField()
     msgText = models.StringField()
 
 # message reaction information
@@ -323,7 +353,6 @@ def custom_export(players):
         'timestamp',
         'sender',
         'tone',
-        'fullText',
         'msgText',
         'reactionData'
     ]
@@ -336,12 +365,6 @@ def custom_export(players):
         player = m.player
         participant = player.participant
         session = player.session
-
-        # full text field
-        try:
-            fullText = json.loads(m.fullText)['content']
-        except:
-            fullText = m.fullText
 
         # get message reaction info as well
         try:
@@ -370,7 +393,6 @@ def custom_export(players):
             m.timestamp,
             m.sender,
             m.tone,
-            fullText,
             m.msgText,
             reacts,
         ]
@@ -384,7 +406,7 @@ class chat(Page):
     form_model = 'player'
     timeout_seconds = 300
 
-    # vars that we will pass to chat.html
+    # vars that we will pass to chat.html (javascript)
     @staticmethod
     def js_vars(player):
 
@@ -398,6 +420,15 @@ class chat(Page):
             emojis = C.EMOJIS,
             allow_reactions = C.ALLOW_REACTIONS,
             showTextTranscript = C.SHOW_TEXT_TRANSCRIPT,
+        )
+
+    # vars that we will pass to chat.html
+    @staticmethod
+    def vars_for_template(player):
+        return dict(
+            cached_messages = json.loads(player.cachedMessages),
+            show_history = C.SHOW_HISTORY,
+            currentPlayer = 'P' + str(player.id_in_group),
         )
 
 
@@ -417,6 +448,7 @@ class chat(Page):
 
         # create current player identifier
         currentPlayer = 'P' + str(player.id_in_group)
+        botLabel = 'B' + str(player.id_in_group)
 
         # grab tone from data
         tone = player.tone
@@ -475,11 +507,7 @@ class chat(Page):
                 except Exception as e:
                     print("Error during transcription:", str(e))
                     yield {player.id_in_group: {'error': f'Transcription failed: {str(e)}'}}
-
-                # randomize tone for each message
-                # tones = ['friendly', 'sarcastic', 'UNHINGED']
-                tones = ['friendly', ]
-                tone = random.choice(tones)
+                    return
                 
                 # create message id
                 dateNow = str(datetime.now(tz=timezone.utc).timestamp())
@@ -499,22 +527,13 @@ class chat(Page):
                             f.write(b64)
                 else:
                     pass
+                
+                # grab text and phase info
+                text = llmText
 
                 # create message content with reactions and save to database
                 reactionsDict = {emoji: 0 for emoji in C.EMOJIS}
-                content = dict(
-                    sender=currentPlayer,
-                    msgId=msgId,
-                    instructions='',
-                    tone=tone,
-                    text=llmText,
-                    reactions=json.dumps(reactionsDict),
-                )
-
-
-                # create message in LLM format
-                msg = {'role': 'user', 'content': json.dumps(content)}
-
+      
                 # save to database
                 MessageData.create(
                     player=player,
@@ -522,12 +541,17 @@ class chat(Page):
                     timestamp=dateNow,
                     sender='Subject',
                     tone=tone,
-                    fullText=json.dumps(msg),
-                    msgText=llmText,
+                    msgText=text,
                 )
 
                 # add message to list
-                messages.append(msg)
+                messages.append({
+                    'sender': 'user',
+                    'label': currentPlayer,
+                    'msgId': msgId,
+                    'text': text,
+                    'reactions': json.dumps(reactionsDict),
+                })
                 
                 # update cache
                 player.cachedMessages = json.dumps(messages)
@@ -535,7 +559,7 @@ class chat(Page):
                 # return output to chat.html
                 yield {player.id_in_group: dict(
                     event='text',
-                    selfText=llmText,
+                    selfText=text,
                     sender=currentPlayer,
                     msgId=msgId,
                     tone=tone,
@@ -546,33 +570,46 @@ class chat(Page):
             elif event == 'botMsg':
 
                 # grab constants bot info
-                botId = C.BOT_LABEL
-
-                # get session code
-                sessionCode = player.session.code
+                botId = botLabel
 
                 # run llm on input text
                 dateNow = str(datetime.now(tz=timezone.utc).timestamp())
-                botText = await runGPT(messages, tone)
+
+                # create inputDat and run api function
+                inputDat = dict(
+                    botLabel = botId,
+                    messages = messages,
+                    tone = tone,
+                )
+
+                botText = await runGPT(inputDat)
                 
                 # grab bot response data
-                botContent = json.loads(botText)
-                outputText = botContent['text']
-                botMsgId = botContent['msgId']
-                
-                # create bot message
-                botMsg = {'role': 'assistant', 'content': botText}
-                
+                outputText = botText.text
+                botMsgId = botText.msgId
+                botTone = botText.tone
+                botReactions = botText.reactions
+
                 # save to database
                 MessageData.create(
                     player=player,
                     sender=botId,
                     msgId=botMsgId,
                     timestamp=dateNow,
-                    tone=tone,
-                    fullText=json.dumps(botMsg),
+                    tone=botTone,
                     msgText=outputText,
                 )
+
+                # update cache with bot message
+                messages.append({
+                    'sender': 'assistant',
+                    'label': botId,
+                    'msgId': botMsgId,
+                    'text': outputText,
+                    'reactions': json.dumps(botReactions),
+                })
+                player.cachedMessages = json.dumps(messages)
+
                 # set voice id
                 ## this one is Sarah: A young, serious sounding crisp British female. Great for a podcast.
                 voiceId = C.VOICE_ID
@@ -586,6 +623,7 @@ class chat(Page):
                 
                 # write audio to file and stream from chat.html
                 ## if amazon s3 setting, save to s3, otherwise save to static folder
+                sessionCode = player.session.code
                 filename = f'{sessionCode}_{botMsgId}.mp3'
                 if C.AMAZON_S3:
                     if await saveToS3('otree-gpt', filename, audioDat):
@@ -603,10 +641,6 @@ class chat(Page):
                     with open(audioFilePath, 'wb') as f:
                         f.write(audioDat)
                     audioURL = filename
-
-                # update cache with bot message
-                messages.append(botMsg)
-                player.cachedMessages = json.dumps(messages)
 
                 # return output to chat.html
                 yield {player.id_in_group: dict(
@@ -655,8 +689,8 @@ class chat(Page):
                     # update reaction counts in message cache
                     # this function looks through the database to make sure that players can only react once for each emoji/message
                     for i, msg in enumerate(messages):
-                        content = json.loads(msg['content'])
-                        if content.get('msgId') == msgId:
+                        reactions = json.loads(msg['reactions'])
+                        if msg.get('msgId') == msgId:
                             reactionCounts = {emoji: 0 for emoji in C.EMOJIS}
                             msgReactions = MsgReactionData.filter(player=player, msgId=msgId)
                             countedUsers = {emoji: set() for emoji in C.EMOJIS}
@@ -664,8 +698,7 @@ class chat(Page):
                                 if reaction.target not in countedUsers[reaction.emoji]:
                                     reactionCounts[reaction.emoji] += 1
                                     countedUsers[reaction.emoji].add(reaction.target)
-                            content['reactions'] = json.dumps(reactionCounts)
-                            messages[i]['content'] = json.dumps(content)
+                            msg['reactions'] = json.dumps(reactionCounts)
                             break
 
                     # update cache

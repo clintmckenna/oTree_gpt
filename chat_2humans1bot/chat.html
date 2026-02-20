@@ -1,4 +1,4 @@
-{{ extends "dictator_game/Page.html" }}
+{{ extends "chat_2humans1bot/Page.html" }}
 
 {{ block title }}
 {{ endblock }}
@@ -10,13 +10,11 @@
 {{ block scripts }}
 <script>
 
+    // how many seconds to wait before triggering the bot message check
+    var botSleepTime = 5;
+
     // run this when page loads
     document.addEventListener('DOMContentLoaded', function() {
-        
-        // Set initial trust rating
-        const infoSpan = document.getElementById('infoSpan');
-        infoSpan.textContent = js_vars.initialTrust;
-        
         // Prevent form submission when pressing enter or clicking buttons
         const form = document.querySelector('form');
         form.addEventListener('submit', function(e) {
@@ -30,7 +28,7 @@
         }, 100);
 
         // start listening for live page functions
-        liveSend({});
+        liveSend({'event': 'phase', 'phase': 0});
         
     });
 
@@ -100,61 +98,94 @@
 
         let event = data["event"];
 
-        // Handle text messages send by humans
+        // Handle text messages from humans (both self and other player)
         if (event == 'text') {
 
             // grab data from server
             const messageId = data.msgId;
-            const selfText = data.selfText;
+            const text = data.text;
             const tone = data.tone;
             const sender = data.sender;
-            
+            const phase = data.phase;
+
             // get chat elements
-            const chatInput = document.getElementById('chatinput');
             const chatMessages = document.getElementById('chatMessages');
-            const toneSpan = document.getElementById('toneSpan');
             
-            // create message html from subject input and insert into chatMessages
-            let messageHtml = `
-                <div class="message selfMsg" id="${messageId}" data-author="${sender}">
-                    <strong>You<br></strong> ${selfText}
-                    ${js_vars.allow_reactions ? `
-                    <div class="message-reaction-bar">
-                        ${js_vars.emojis.map(emoji => 
-                            `<button class="message-reaction-btn" onclick="addMessageReaction('${messageId}', '${emoji}')">${emoji}</button>`
-                        ).join('')}
+            // check if this message is from self or other player
+            if (sender == js_vars.playerId) {
+                // show as self message
+                let messageHtml = `
+                    <div class="message selfMsg" id="${messageId}" data-author="${sender}">
+                        <strong>You<br></strong> ${text}
+                        ${js_vars.allow_reactions ? `
+                        <div class="message-reaction-bar">
+                            ${js_vars.emojis.map(emoji => 
+                                `<button class="message-reaction-btn" onclick="addMessageReaction('${messageId}', '${emoji}')">${emoji}</button>`
+                            ).join('')}
+                        </div>
+                        <div class="message-reactions"></div>
+                        ` : ''}
                     </div>
-                    <div class="message-reactions"></div>
-                    ` : ''}
-                </div>
-            `;
-            chatMessages.insertAdjacentHTML('beforeend', messageHtml);
+                `;
+                chatMessages.insertAdjacentHTML('beforeend', messageHtml);
+            } else {
+                // show as other player message
+                let messageHtml = `
+                    <div class="message otherMsg" id="${messageId}" data-author="${sender}">
+                        <strong>${sender}<br></strong> ${text}
+                        ${js_vars.allow_reactions ? `
+                        <div class="message-reaction-bar">
+                            ${js_vars.emojis.map(emoji => 
+                                `<button class="message-reaction-btn" onclick="addMessageReaction('${messageId}', '${emoji}')">${emoji}</button>`
+                            ).join('')}
+                        </div>
+                        <div class="message-reactions"></div>
+                        ` : ''}
+                    </div>
+                `;
+                chatMessages.insertAdjacentHTML('beforeend', messageHtml);
+            }
             chatMessages.scrollTop = chatMessages.scrollHeight;
 
-            // trigger bot message
-            liveSend({'event': 'botMsg'});
-            
+            // update phase if zero (first message triggers moderator greeting)
+            // only the sender triggers the greeting to avoid duplicates
+            if (phase == 0 && sender == js_vars.playerId) {
+                console.log('Sending phase update to 1...');
+                liveSend({'event': 'phase', 'phase': 1});
+                
+                // Trigger moderator greeting
+                setTimeout(() => {
+                    console.log('Sending moderator bot greeting...');
+                    liveSend({'event': 'botMsg', 'isGreeting': true});
+                }, 500);
+                
+            }
 
 
         // handle bot messages
         } else if (event == 'botText') {
 
             // grab data from server
+            // const messageId = data.msgId;
             const botMsgId = data.botMsgId;
             const text = data.text;
+            // const botText = data.botText;
+            const tone = data.tone;
             const sender = data.sender;
-            const perceptionDiff = data.perceptionDiff;
-            const trustRating = data.trustRating;
+            // const currentPlayer = data.currentPlayer;
+            const phase = data.phase;
+
+            var botclass = 'moderatorText';
 
             // get chat elements
             const chatInput = document.getElementById('chatinput');
             const chatMessages = document.getElementById('chatMessages');
-            const infoSpan = document.getElementById('infoSpan');
+            const toneSpan = document.getElementById('toneSpan');
 
             // Add typing indicator for bot and insert into chatMessages
             const typingId = 'typing-' + Date.now();
             let typingHtml = `
-                <div class="message botMsg typing" id="${typingId}">
+                <div class="message botMsg typing ${botclass}" id="${typingId}">
                     <div class="typing-indicator">
                         <span></span>
                         <span></span>
@@ -181,9 +212,10 @@
           
                 
                 // replace with bot response
+                var senderLabel = 'Moderator';
                 let botHtml = `
-                    <div class="message botMsg" id="${botMsgId}" data-author="${sender}">
-                        <strong>${sender}<br></strong> ${text}
+                    <div class="message botMsg ${botclass}" id="${botMsgId}" data-author="${sender}">
+                        <strong>${senderLabel}<br></strong> ${text}
                         ${js_vars.allow_reactions ? `
                         <div class="message-reaction-bar">
                             ${js_vars.emojis.map(emoji => 
@@ -198,42 +230,16 @@
 
                 chatMessages.scrollTop = chatMessages.scrollHeight;
 
-                
-                // also update trust rating span with animation
-                const trustContainer = document.getElementById('trustRatingContainer');
-                const infoSpan = document.getElementById('infoSpan');
-                
-                // Create and animate the floating number
-                if (perceptionDiff !== 0) {
-                    const floatingNumber = document.createElement('div');
-                    floatingNumber.className = `trust-change ${perceptionDiff > 0 ? 'positive-change' : 'negative-change'}`;
-                    floatingNumber.textContent = perceptionDiff > 0 ? `+${perceptionDiff}` : perceptionDiff;
-                    trustContainer.appendChild(floatingNumber);
-                    
-                    // Change the color based on perception difference and keep it
-                    infoSpan.style.color = perceptionDiff > 0 ? '#28a745' : '#dc3545';
-                    
-                    // Update the trust rating
-                    infoSpan.textContent = trustRating;
-                    
-                    // Only remove the floating number after animation
-                    setTimeout(() => {
-                        floatingNumber.remove();
-                    }, 1500);
-
-                } else {
-                    // Just update the number if there's no change, keeping previous color
-                    infoSpan.textContent = trustRating;
-                }
-
+                // also update tone span
+                toneSpan.textContent = tone;
 
             }, 2000);
 
+            // increment phase
+            liveSend({'event': 'phase', 'phase': phase + 1});
 
         // handle message reactions
         } else if (event == 'msgReaction') {
-
-            // grab data from server
             const msgId = data["msgId"];
             const emoji = data["emoji"];
             const playerId = data["playerId"];
@@ -280,6 +286,33 @@
             if (reactionBar) {
                 reactionBar.classList.remove('persistent');
             }
+
+        // handle phase logic
+        } else if (event == 'phase') {
+            
+            // grab phase
+            const phase = data["phase"];
+            console.log('Phase event received:', phase);
+
+            // if phase is 0, do nothing
+            // else, set up regular moderator bot checks (only player 1 to avoid duplicates)
+            if (phase == 0) {
+                console.log('Phase 0 - no action needed');
+            } else if (js_vars.id_in_group == 1 && !window.botCheckInterval) {
+                console.log('Setting up moderator bot message checks (player 1 only)...');
+                
+                // Start regular moderator checks after a delay to allow greeting
+                setTimeout(() => {
+                    console.log('Starting moderator check interval...');
+                    const intervalId = setInterval(() => {
+                        console.log('Regular interval check - trying moderator bot...');
+                        liveSend({'event': 'botMsg'});
+                    }, botSleepTime*1000);
+                    
+                    // Store interval ID in case we need to clear it later
+                    window.botCheckInterval = intervalId;
+                }, 3000);
+            }
         }
     }
 </script>
@@ -289,28 +322,24 @@
 {{ block content }}
 <div class='container card mb-3'>
     <div class='row no-gutters'>
-        
+
         <!-- left side of interface, with timer and other info -->
         <div class='infoBox col-md-4 d-flex align-items-center justify-content-center' style='font-size:22px; height: 100%; min-height: 300px;'>
             <span class='timer'>
                 Page will auto-advance in:
                 <span class='otree-timer__time-left'></span>
             </span>
-
-            <div id="trustRatingContainer">
-                <b>Current Trust Rating:</b> 
-                <br>
-                <span id='infoSpan' style="display: inline; margin-left: 5px; font-weight: bold;">&nbsp</span>
-            </div>
+            <br>
+            <b>Tone:</b> <span id='toneSpan' style="display: inline; margin-left: 5px;">&nbsp</span>
             
             <br><br>
-            <b>Prompt:</b> <i>Get the bot to trust you.</i>
+            <b>Prompt:</b> <i>Discuss cognitive dissonance vs. self-perception theory with your partner</i>
         </div>
 
         <!-- right side of interface, with chat box and text input -->
         <div class='chatPanel col-md-8' id='chatPanel'>
             <div class='chatHeader'>
-                Bot Chat
+                Group Chat
             </div>
             <div id='chatMessages' class='chatMessages'>
                 <div class='message sysMsg'>
@@ -321,11 +350,6 @@
 
                     {{ if cached_messages and show_history }}
                         {{ for msg in cached_messages }}
-                            {{ if msg.sender == 'assistant' }}                    
-                                <div class="message botMsg" >
-                                    <strong>Bot<br></strong> {{ msg.text }}
-                                </div>    
-                            {{ endif }}
                             {{ if msg.sender == 'user' }}     
                                 {{ if msg.label == currentPlayer }}               
                                 <div class="message selfMsg" >
@@ -336,6 +360,11 @@
                                     <strong>{{ msg.label }}<br></strong> {{ msg.text }}
                                 </div>    
                                 {{ endif }}
+                            {{ endif }}
+                            {{ if 'assistant' in msg.sender }}
+                                <div class="message botMsg moderatorText" >
+                                    <strong>Moderator<br></strong> {{ msg.text }}
+                                </div>
                             {{ endif }}
                         {{ endfor }}
                     {{ endif }}

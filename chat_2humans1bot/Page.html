@@ -19,18 +19,15 @@
         /* max-width: 1200px; */
         /* min-width: 1000px; */
         /* font-family: 'Roboto', sans-serif; */
+        font-size: 18px;
         /* overflow-x: scroll; */
-        
-        /* font-size: 18px; */
-        /* overflow: hidden; */
-        margin: 0; 
-        background: #fff; 
+        overflow: hidden;
     }
 
     /* title */
-    .otree-title {
-        display: none; 
-    }
+    /* .otree-title { */
+        /* text-align: center;  */
+    /* } */
 
     /* wait page (entire dialogue) */
     /* .otree-wait-page {} */
@@ -60,13 +57,13 @@
 
     /* Responsive timer with custom styling */
     .timer {
-        /* margin-bottom: 10px; */
-        /* align-self:center; */
-        /* margin-top: auto; */
+        margin-bottom: 10px;
+        align-self:center;
+        margin-top: auto;
         color:#6874E8;
-        /* font-weight: bold; */
-        /* text-align: center; */
-        /* font-size: 20px; */
+        font-weight: bold;
+        text-align: center;
+        font-size: 20px;
         font-weight: 700;
     }
 
@@ -215,8 +212,8 @@
         align-self: flex-start;   
     }
 
-    /* bot message */
-    .botMsg {
+    /* other player message */
+    .otherMsg {
         background-color: #38A1F3;
         text-align: left;
         color: #fff;
@@ -230,9 +227,11 @@
         text-align: right;
         margin-bottom: 10px;
         padding: 10px 10px 10px 12px;
-        border-radius: 20px;
-        max-width: 80%;
-        height: 100%;
+        word-wrap: break-word;
+        align-self: flex-end;
+        display: block;
+        width: fit-content;
+        cursor: pointer;
     }
 
     /* Reaction user styling */
@@ -415,172 +414,17 @@
 
     
     /* -------------------------------------------------------- */
-    /* speech bubble styles                                     */
+    /* text span styles                                         */
     /* -------------------------------------------------------- */
 
-    /* canvas { display: block; } */
-    #game-container {
-        position: relative;
-    }
-    
-    #instructions {
-        position: absolute;
-        top: 10px;
-        left: 10px;
-        color: #000;
-        font-family: Arial, sans-serif;
-        background: rgba(255,255,255,0.8);
-        padding: 10px;
-        border-radius: 5px;
-        border: 2px solid #000;
-        z-index: 100;
-    }
-
-    #coordinates {
-        position: absolute;
-        top: 120px;
-        left: 10px;
-        color: #000;
-        font-family: Arial, sans-serif;
-        background: rgba(255,255,255,0.8);
-        padding: 10px;
-        border-radius: 5px;
-        border: 2px solid #000;
-        width: max-content;
-        z-index: 100;
-    }
-    #chat-input {
-        position: fixed;
-        bottom: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        padding: 8px;
-        width: 300px;
-        border: 2px solid #000;
-        border-radius: 20px;
-        font-family: Arial, sans-serif;
-        background: rgba(255,255,255,0.9);
-    }
-    /* shared base for all speech bubbles (player + NPC) */
-    #speech-bubble,
-    .speech-bubble {
-        display: none;
-        position: fixed;
-        background: rgba(255, 255, 255, 0.75);
-        backdrop-filter: blur(8px);
-        -webkit-backdrop-filter: blur(8px);
-        padding: 8px 12px 8px 12px;
-        border-radius: 14px;
-        border: 2px solid rgba(0, 0, 0, 0.15);
-        max-width: 220px;
+    /* moderator bot message */
+    .moderatorText {
+        background-color: #323232;
+        color: #fff;
         text-align: left;
-        word-wrap: break-word;
-        font-family: 'Roboto', Arial, sans-serif;
-        font-size: 13px;
-        line-height: 1.4;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.12), 0 1px 3px rgba(0,0,0,0.08);
-        transform: translate(-10%, 0);
-        z-index: 100;
-        --accent: #888;
-        --arrow-color: rgba(255, 255, 255, 0.75);
+        align-self: flex-start;
     }
 
-    /* downward arrow */
-    #speech-bubble:after,
-    .speech-bubble:after {
-        content: '';
-        position: absolute;
-        bottom: -9px;
-        left: 24px;
-        border-width: 9px 8px 0;
-        border-style: solid;
-        border-color: var(--arrow-color) transparent transparent;
-        filter: drop-shadow(0 2px 1px rgba(0,0,0,0.08));
-    }
-
-    /* sender label inside bubble */
-    .bubble-label {
-        display: block;
-        font-weight: 700;
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        margin-bottom: 3px;
-        color: var(--accent);
-    }
-
-    /* color accents per NPC */
-    #npc-speech-bubble  { --accent: #e53935; border-color: rgba(229,57,53,0.45); }
-    #npc2-speech-bubble { --accent: #2e7d32; border-color: rgba(46,125,50,0.45); }
-    #npc3-speech-bubble { --accent: #424242; border-color: rgba(66,66,66,0.45); }
-    #speech-bubble      { --accent: #1976d2; border-color: rgba(25,118,210,0.35); }
-
-    /* animations */
-    #speech-bubble.animate,
-    .speech-bubble.animate {
-        animation: bubbleBounceIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
-                   bubbleFadeOut 0.4s ease-in-out forwards;
-        animation-delay: 0s, 3s;
-    }
-
-    @keyframes bubbleBounceIn {
-        0%   { opacity: 0; transform: translate(-10%, 12px) scale(0.85); }
-        100% { opacity: 1; transform: translate(-10%, 0) scale(1); }
-    }
-
-    @keyframes bubbleFadeOut {
-        0%   { opacity: 1; transform: translate(-10%, 0) scale(1); }
-        100% { opacity: 0; transform: translate(-10%, -6px) scale(0.95); }
-    }
-
-    /* typewriter cursor blink */
-    .bubble-text.typing::after {
-        content: '|';
-        animation: cursorBlink 0.6s step-end infinite;
-        margin-left: 1px;
-        font-weight: 300;
-    }
-    @keyframes cursorBlink {
-        50% { opacity: 0; }
-    }
-
-
-            
-    #chatinput {
-        position: absolute;
-        bottom: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        width: 30%;   
-    }
-
-    #game-container {
-        opacity: 0;
-        transition: opacity 0.5s ease-in;
-    }
-
-    #game-container.loaded {
-        opacity: 1;
-    }
-
-    .loading-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background-color: #f0f0f0;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 1000;
-        transition: opacity 0.5s ease-out;
-    }
-
-    .loading-overlay.hidden {
-        opacity: 0;
-        pointer-events: none;
-    }
 
 
 </style>

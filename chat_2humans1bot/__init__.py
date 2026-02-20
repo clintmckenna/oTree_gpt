@@ -1,13 +1,15 @@
 from otree.api import *
 from os import environ
-from openai import OpenAI, AsyncOpenAI
+from openai import AsyncOpenAI
 import random
+import re
+import asyncio
 import json
 from pydantic import BaseModel 
 from datetime import datetime, timezone
 
 doc = """
-LLM chat with reactions and structured output
+LLM chat with multiple agents, based on chat_complex
 """
 
 author = 'Clint McKenna clint@calsocial.org'
@@ -17,8 +19,8 @@ author = 'Clint McKenna clint@calsocial.org'
 ########################################################
 
 class C(BaseConstants):
-    NAME_IN_URL = 'chat_complex'
-    PLAYERS_PER_GROUP = None
+    NAME_IN_URL = 'chat_2humans1bot'
+    PLAYERS_PER_GROUP = 2
     NUM_ROUNDS = 1
 
     # emoji reactions used for chat
@@ -29,49 +31,56 @@ class C(BaseConstants):
     SHOW_HISTORY = True
 
     # LLM vars
-    ## bot label and temperature
+    ## moderator bot label and temperature
 
     ### temperature (range 0 - 2)
     ### this sets the bot's creativity in responses, with higher values being more creative and less deterministic
     ### https://platform.openai.com/docs/api-reference/completions#completions/create-temperature
-    #### not used in gpt-5+ unless reasoning set to none
-    BOT_TEMP = 1.0
+
+    MOD_LABEL = 'Moderator'
+    MOD_TEMP = 0.5
+    MOD_MSG_FREQUENCY = 6
+    
+    ## openAI key
+    OPENAI_KEY = environ.get('OPENAI_KEY')
 
     ## reasoning level for supported models
     ## this can be set to 'none', 'minimal', 'low', 'medium', or 'high'
     REASONING_LVL = 'none'
     
-    ## openAI key
-    OPENAI_KEY = environ.get('OPENAI_KEY')
-
     ## model
     ## this is which gpt model to use, which have different prices and ability
     ## https://platform.openai.com/docs/models
     ## IMPORTANT: for this app, you must use a model that supports structured output
     MODEL = "gpt-4o-mini"
 
-    ## set system prompt for agents
+    ## set system prompt for moderator bot
     ## according to OpenAI's documentation, this should be less than ~1500 words
-    SYS_BOT = f"""You are Alex, a human participant taking part in an online discussion. Always limit messages to less than 200 characters and speak in an informal language. 
+    SYS_MODERATOR = f"""You are Moderator bot, a helpful dialogue coach analyzing conversations to improve discussion quality. You will be moderating a discussion between two human participants on the merits of cognitive dissonance vs. self-perception theory. As a greeting, state that you are excited to moderate the discussion. For each intervention:
 
+    1. Analyze the dialogue for:
+        - Communication clarity and engagement
+        - Quality of reasoning and tone
+        - Areas needing deeper exploration
+
+    2. Provide ONE specific, actionable suggestion using phrases like:
+        - "Consider exploring..."
+        - "It might help to clarify..."
+        - "The discussion could benefit from..."
+    
     Each user input will be a list of json objects containing:
     - their sender identifer, which shows who sent the message (string)
-    - message Identifer (string)
     - instructions for responding (string)
     - tone to use (string)
     - the conversation message history so far (string)
     - reactions that users have made to different messages (in the 'reactions' field) (string)
 
-    IMPORTANT: This list will be the entire message history between all actors in a conversation. Messages sent by you are labeled in the 'Sender' field as your assigned label. Other actors will be labeled differently (e.g., 'P1', 'B1', etc.).
-    
-    Participants may have added reactions to different messages. The following reactions are possible: {', '.join(EMOJIS)}
-    
     As output, you MUST provide a json object with:
-    - 'sender': your assigned sender identifier
-    - 'msgId': your assigned message ID
-    - 'tone': your assigned tone
-    - 'text': your response (limit to 300 characters)
-    - 'reactions': your assigned reactions value"""
+    - 'sender': your assigned sender identifier (string)
+    - 'msgId': your assigned message ID (string)
+    - 'tone': your assigned tone (string)
+    - 'text': your response (limit to 300 characters) (string)
+    - 'reactions': your assigned reactions value (string)"""
 
 
 ########################################################
@@ -86,12 +95,12 @@ class MsgOutputSchema(BaseModel):
     text: str
     reactions: str
 
-# function to run messages 
-async def runGPT(inputDat):
+# moderator llm function
+async def runModeratorGPT(inputDat):
 
     # grab bot vars from constants and inputDat
-    botTemp = C.BOT_TEMP
-    botPrompt = C.SYS_BOT
+    botTemp = C.MOD_TEMP
+    botPrompt = C.SYS_MODERATOR
     botLabel = inputDat['botLabel']
     tone = inputDat['tone']
 
@@ -102,14 +111,13 @@ async def runGPT(inputDat):
     # grab text that participant inputs and format for chatgpt
     reactionsDict = {emoji: 0 for emoji in C.EMOJIS}
     instructions = f"""
-        You are {botLabel}. Provide a json object with the following schema (DO NOT CHANGE ASSIGNED VALUES):
+        You are {botLabel}, the MODERATOR. You do NOT participate in the debate. Your role is to facilitate and coach the discussion. Provide a json object with the following schema (DO NOT CHANGE ASSIGNED VALUES):
             'sender': {botLabel} (string),
             'msgId': {botMsgId} (string), 
-            'tone': {tone} (string), 
-            'text': Your response to the user's message in a {tone} tone (string), 
+            'tone': moderator (string), 
+            'text': Your moderation feedback on the recent exchange (string), 
             'reactions': {json.dumps(reactionsDict)} (string)
     """
-
     # add instructions to inputDat
     inputDat['instructions'] = instructions
 
@@ -184,23 +192,36 @@ def creating_session(subsession: Subsession):
 
         # randomize tone for the conversation
         # tones = ['friendly', 'sarcastic', 'UNHINGED']
-        tones = ['friendly', ]
+        tones = ['neutral', ]
         tone = random.choice(tones)
         p.tone = tone
 
-# group vars
+# group vars (shared conversation state)
 class Group(BaseGroup):
-    pass    
+
+    # cache of all messages in conversation (shared by both players)
+    cachedMessages = models.LongStringField(initial='[]')
+
+    # turn tracking
+    ## phase number
+    phase = models.IntegerField(initial=0)
+    ## message count when moderator bot last spoke
+    lastModeratorBotMsg = models.IntegerField(initial=0)
+    ## total message count
+    messageCount = models.IntegerField(initial=0)
 
 # player vars
 class Player(BasePlayer):
 
-    # tone for the bot
+    # tone for the conversation
     tone = models.StringField()
 
-    # cache of all messages in conversation
-    cachedMessages = models.LongStringField(initial='[]')
-    
+# function to check if moderator bot should speak
+def can_mod_speak(group: Group) -> bool:
+    msg_count = group.messageCount
+    # moderator can speak if enough messages have occurred since its last message
+    messages_since_last = msg_count - group.lastModeratorBotMsg
+    return messages_since_last >= C.MOD_MSG_FREQUENCY
 
 ########################################################
 # Extra models                                         #
@@ -272,7 +293,7 @@ def custom_export(players):
                 } for r in mReactions
             ]
             # save as a json dictionary to column
-            # you will have to unnest it afterwards since I don't think you can have multiple exports
+            # you will have to expand it afterwards
             reacts = json.dumps(reaction_list)
         except:
             reacts = '[]'
@@ -295,6 +316,10 @@ def custom_export(players):
 # Pages                                                #
 ########################################################
 
+# wait page so both players arrive before chat begins
+class ChatWaitPage(WaitPage):
+    pass
+
 # chat page 
 class chat(Page):
     form_model = 'player'
@@ -303,44 +328,47 @@ class chat(Page):
     # vars that we will pass to chat.html (javascript)
     @staticmethod
     def js_vars(player):
-
-        # playerId as seen in chat
         currentPlayer = 'P' + str(player.id_in_group)
         
-        # send player info and emojis to page
         return dict(
-            id_in_group = player.id_in_group,
-            playerId = currentPlayer,
-            emojis = C.EMOJIS,
-            allow_reactions = C.ALLOW_REACTIONS,
+            id_in_group=player.id_in_group,
+            playerId=currentPlayer,
+            allow_reactions=C.ALLOW_REACTIONS,
+            emojis=C.EMOJIS,
+            mod_label=C.MOD_LABEL,
         )
-    
+
     # vars that we will pass to chat.html
     @staticmethod
     def vars_for_template(player):
+        group = player.group
+        currentPlayer = 'P' + str(player.id_in_group)
         return dict(
-            cached_messages = json.loads(player.cachedMessages),
+            cached_messages = json.loads(group.cachedMessages),
             show_history = C.SHOW_HISTORY,
-            currentPlayer = 'P' + str(player.id_in_group),
+            currentPlayer = currentPlayer,
+            mod_label = C.MOD_LABEL,
         )
 
     # live method functions
     @staticmethod
     async def live_method(player: Player, data):
+        group = player.group
         
         # if no new data, just return cached messages
         if not data:
             yield {player.id_in_group: dict(
-                messages=json.loads(player.cachedMessages),
+                messages=json.loads(group.cachedMessages),
                 reactions=[]
             )}
+            return
         
         # if we have new data, process it and update cache
-        messages = json.loads(player.cachedMessages)
+        messages = json.loads(group.cachedMessages)
 
         # create current player identifier
         currentPlayer = 'P' + str(player.id_in_group)
-        botLabel = 'B' + str(player.id_in_group)
+        modLabel = C.MOD_LABEL
 
         # grab tone from data
         tone = player.tone
@@ -367,9 +395,9 @@ class chat(Page):
                 # save to database
                 MessageData.create(
                     player=player,
+                    sender=currentPlayer,
                     msgId=msgId,
                     timestamp=dateNow,
-                    sender='Subject',
                     tone=tone,
                     msgText=text,
                 )
@@ -383,74 +411,132 @@ class chat(Page):
                     'reactions': json.dumps(reactionsDict),
                 })
                 
-                # update cache
-                player.cachedMessages = json.dumps(messages)
-                
-                # return output to chat.html
-                yield {player.id_in_group: dict(
+                # update group cache and message count
+                group.cachedMessages = json.dumps(messages)
+                group.messageCount += 1
+                                
+                # broadcast to all players in group
+                response = dict(
                     event='text',
-                    selfText=text,
+                    text=text,
                     sender=currentPlayer,
                     msgId=msgId,
                     tone=tone,
-                )}
+                    phase=group.phase
+                )
+                yield {p.id_in_group: response for p in group.get_players()}
 
-            # handle bot messages
+            # handle moderator bot messages
             elif event == 'botMsg':
 
-                # grab constants bot info
-                botId = botLabel
-
-                # run llm on input text
-                dateNow = str(datetime.now(tz=timezone.utc).timestamp())
+                # get data from request
+                isGreeting = data.get('isGreeting', False)
 
                 # create inputDat and run api function
                 inputDat = dict(
-                    botLabel = botId,
+                    botLabel = modLabel,
                     messages = messages,
                     tone = tone,
                 )
-
-                botText = await runGPT(inputDat)
                 
-                # grab bot response data
-                outputText = botText.text
-                botMsgId = botText.msgId
-                botTone = botText.tone
-                botReactions = botText.reactions
+                # handle moderator greeting (first message)
+                if isGreeting:
+                    dateNow = str(datetime.now(tz=timezone.utc).timestamp())
+                    botText = await runModeratorGPT(inputDat)
+                        
+                    # grab bot response data
+                    outputText = botText.text
+                    botMsgId = botText.msgId
+                    botTone = botText.tone
+                    botReactions = botText.reactions
 
-                # save to database
-                MessageData.create(
-                    player=player,
-                    sender=botId,
-                    msgId=botMsgId,
-                    timestamp=dateNow,
-                    tone=botTone,
-                    msgText=outputText,
-                )
+                    # save to database
+                    MessageData.create(
+                        player=player,
+                        sender=modLabel,
+                        msgId=botMsgId,
+                        timestamp=dateNow,
+                        tone=botTone,
+                        msgText=outputText,
+                    )
+                    # update cache with bot message
+                    messages.append({
+                        'sender': 'assistant (Moderator)',
+                        'label': modLabel,
+                        'msgId': botMsgId,
+                        'text': outputText,
+                        'reactions': json.dumps(botReactions),
+                    })
+                    group.cachedMessages = json.dumps(messages)
+                    group.lastModeratorBotMsg = group.messageCount
+                    group.messageCount += 1
+                    
+                    # broadcast to all players in group
+                    response = dict(
+                        event='botText',
+                        botMsgId=botMsgId,
+                        text=outputText,
+                        tone=tone,
+                        sender=modLabel,
+                        phase=group.phase
+                    )
+                    yield {p.id_in_group: response for p in group.get_players()}
+                
+                # regular moderator messages - check if it should speak
+                elif can_mod_speak(group):
+                    
+                    # if last message was from moderator, skip
+                    if messages and messages[-1].get('label') == modLabel:
+                        yield {player.id_in_group: dict()}
+                        return
+                    
+                    # generate moderator response
+                    dateNow = str(datetime.now(tz=timezone.utc).timestamp())
+                    botText = await runModeratorGPT(inputDat)
+                    
+                    # grab bot response data
+                    outputText = botText.text
+                    botMsgId = botText.msgId
+                    botTone = botText.tone
+                    botReactions = botText.reactions
 
-                # update cache with bot message
-                messages.append({
-                    'sender': 'assistant',
-                    'label': botId,
-                    'msgId': botMsgId,
-                    'text': outputText,
-                    'reactions': json.dumps(botReactions),
-                })
-                player.cachedMessages = json.dumps(messages)
+                    # save to database
+                    MessageData.create(
+                        player=player,
+                        sender=modLabel,
+                        msgId=botMsgId,
+                        timestamp=dateNow,
+                        tone=botTone,
+                        msgText=outputText,
+                    )
+                    
+                    # update group cache and message count
+                    group.lastModeratorBotMsg = group.messageCount
+                    group.messageCount += 1
+                    messages.append({
+                        'sender': 'assistant (Moderator)',
+                        'label': modLabel,
+                        'msgId': botMsgId,
+                        'text': outputText,
+                        'reactions': json.dumps(botReactions),
+                    })
+                    group.cachedMessages = json.dumps(messages)
 
-                # return output to chat.html
-                yield {player.id_in_group: dict(
-                    event='botText',
-                    sender='Bot',
-                    # sender=botId, # if you want to have more than one bot, might be more useful to use the botId
-                    botMsgId=botMsgId,
-                    tone=tone,
-                    text=outputText,
-                )}
-
-
-            # handle emoji reaction logic
+                    # broadcast to all players in group
+                    response = dict(
+                        event='botText',
+                        botMsgId=botMsgId,
+                        text=outputText,
+                        tone=tone,
+                        sender=modLabel,
+                        phase=group.phase
+                    )
+                    yield {p.id_in_group: response for p in group.get_players()}
+                else:
+                    # if its not moderator's turn to speak, pass
+                    yield {player.id_in_group: dict()}
+            
+            # handle reaction logic
             elif event == 'reaction':
 
                 # create reaction id
@@ -462,7 +548,7 @@ class chat(Page):
                 trgt = data['target']
                 emoji = data['emoji']
 
-                # check if reaction already exists
+                # check if reaction already exists (search current player's reactions)
                 existingReactions = MsgReactionData.filter(
                     player=player,
                     msgId=msgId,
@@ -483,37 +569,48 @@ class chat(Page):
                     )
 
                     # update reaction counts in message cache
-                    # this function looks through the database to make sure that players can only react once for each emoji/message
+                    # search across ALL players in group for accurate counts
                     for i, msg in enumerate(messages):
-                        reactions = json.loads(msg['reactions'])
                         if msg.get('msgId') == msgId:
-                            reactionCounts = {emoji: 0 for emoji in C.EMOJIS}
-                            msgReactions = MsgReactionData.filter(player=player, msgId=msgId)
-                            countedUsers = {emoji: set() for emoji in C.EMOJIS}
-                            for reaction in msgReactions:
-                                if reaction.target not in countedUsers[reaction.emoji]:
-                                    reactionCounts[reaction.emoji] += 1
-                                    countedUsers[reaction.emoji].add(reaction.target)
+                            reactionCounts = {e: 0 for e in C.EMOJIS}
+                            countedUsers = {e: set() for e in C.EMOJIS}
+                            for gp in group.get_players():
+                                msgReactions = MsgReactionData.filter(player=gp, msgId=msgId)
+                                for reaction in msgReactions:
+                                    if reaction.sender not in countedUsers[reaction.emoji]:
+                                        reactionCounts[reaction.emoji] += 1
+                                        countedUsers[reaction.emoji].add(reaction.sender)
                             msg['reactions'] = json.dumps(reactionCounts)
                             break
 
-                    # update cache
-                    player.cachedMessages = json.dumps(messages)
+                    # update group cache
+                    group.cachedMessages = json.dumps(messages)
 
-                    # return output to chat.html
-                    yield {player.id_in_group: dict(
+                    # broadcast reaction to all players in group
+                    response = dict(
                         event='msgReaction',
                         playerId=currentPlayer,
                         msgId=msgId,
                         msgReactionId=msgReactionId,
                         target=trgt,
                         emoji=emoji
-                    )}
+                    )
+                    yield {p.id_in_group: response for p in group.get_players()}
 
-            
+            # handle phase updates
+            elif event == 'phase':
+                
+                # update group phase and broadcast to all players
+                group.phase = data.get('phase', 0)
+                response = dict(
+                    event='phase',
+                    phase=group.phase
+                )
+                yield {p.id_in_group: response for p in group.get_players()}
 
 
 # page sequence
 page_sequence = [
+    ChatWaitPage,
     chat,
 ]

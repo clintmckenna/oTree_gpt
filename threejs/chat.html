@@ -94,40 +94,71 @@
         
         // get div based on sender
         let sb;
-        let timeOut;
+        let label;
+        let baseTimeout;
         if (sender == 'Red') {
             sb = npcSpeechBubble;
-            timeOut = 3500;
+            label = 'Red';
+            baseTimeout = 3500;
         } else if (sender == 'Green') {
             sb = npc2SpeechBubble;
-            timeOut = 3500;
+            label = 'Green';
+            baseTimeout = 3500;
         } else if (sender == 'Black') {
             sb = npc3SpeechBubble;
-            timeOut = 3500;
+            label = 'Black';
+            baseTimeout = 3500;
         } else if (sender == 'Self') {
             sb = speechBubble;
-            timeOut = 1000;
+            label = 'You';
+            baseTimeout = 1500;
         } else {
             console.log('Unknown sender:', sender);
-            return; // Exit if sender is not recognized
+            return;
         }
 
-        // add speech bubble over character
+        // clear any running typewriter on this bubble
+        if (sb._twTimer) { clearTimeout(sb._twTimer); sb._twTimer = null; }
+        if (sb._hideTimer) { clearTimeout(sb._hideTimer); sb._hideTimer = null; }
+
+        // build inner HTML: label + text span
+        sb.innerHTML = '<span class="bubble-label">' + label + '</span><span class="bubble-text typing"></span>';
+        const textSpan = sb.querySelector('.bubble-text');
+
+        // show bubble
         sb.style.display = 'block';
-        sb.textContent = text;
-        
-        // Remove the animate class (if it exists) and force a reflow
         sb.classList.remove('animate');
-        void sb.offsetWidth; // Force reflow
-        
-        // Add the animate class to trigger the animations
+        void sb.offsetWidth;
         sb.classList.add('animate');
 
-        // Hide the speech bubble after animation completes (3.5s = 3s delay + 0.5s animation)
-        setTimeout(() => {
-            sb.style.display = 'none';
-            sb.classList.remove('animate');
-        }, timeOut);
+        // typewriter effect (NPC only; player text appears instantly)
+        if (sender !== 'Self') {
+            let i = 0;
+            const speed = Math.max(15, Math.min(35, 800 / text.length)); // adaptive speed
+            function typeChar() {
+                if (i < text.length) {
+                    textSpan.textContent += text.charAt(i);
+                    i++;
+                    sb._twTimer = setTimeout(typeChar, speed);
+                } else {
+                    textSpan.classList.remove('typing');
+                }
+            }
+            typeChar();
+            // total display time = typing duration + read time
+            const totalTime = (text.length * speed) + baseTimeout;
+            sb._hideTimer = setTimeout(() => {
+                sb.style.display = 'none';
+                sb.classList.remove('animate');
+            }, totalTime);
+        } else {
+            textSpan.textContent = text;
+            textSpan.classList.remove('typing');
+            sb._hideTimer = setTimeout(() => {
+                sb.style.display = 'none';
+                sb.classList.remove('animate');
+            }, baseTimeout);
+        }
 
     }
 

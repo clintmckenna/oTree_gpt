@@ -445,8 +445,32 @@
                     <strong>System<br></strong>
                     Please send a message to begin the conversation.
                 </div>
+
+                {{ if cached_messages and show_history }}
+                    {{ for msg in cached_messages }}
+                        {{ if msg.sender == 'assistant' }}                    
+                            <div class="message botMsg" >
+                                <strong>Bot<br></strong> {{ msg.text }}
+                            </div>    
+                            {{ endif }}
+                            {{ if msg.sender == 'user' }}     
+                                {{ if msg.label == currentPlayer }}               
+                                <div class="message selfMsg" >
+                                    <strong>You<br></strong> {{ msg.text }}
+                                </div>    
+                                {{ else }}
+                                <div class="message otherMsg" >
+                                    <strong>{{ msg.label }}<br></strong> {{ msg.text }}
+                                </div>    
+                                {{ endif }}
+                            {{ endif }}
+                        {{ endfor }}
+                    {{ endif }}
+                            
+
             </div>
-                    
+
+
             <!-- disable input box for voice only -->
             <!-- <div class='inputBox'>
                 <div class='typeInputBox'>

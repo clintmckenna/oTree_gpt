@@ -74,8 +74,8 @@ class C(BaseConstants):
     Each user input will be a nested list of json objects containing:
     - their sender identifer, which shows who sent the message
     - instructions for responding
-    - tone to use
-    - text you will be responding to
+    - tone to use 
+    - the conversation message history so far
 
     IMPORTANT: This list will be the entire message history between all actors in a conversation. Messages sent by you are labeled in the 'Sender' field as {BOT_LABEL1}. Other actors will be labeled differently (e.g., 'P1', 'B1', etc.).
     
@@ -99,7 +99,7 @@ class C(BaseConstants):
     - their sender identifer, which shows who sent the message
     - instructions for responding
     - tone to use
-    - text you will be responding to
+    - the conversation message history so far
 
     IMPORTANT: This list will be the entire message history between all actors in a conversation. Messages sent by you are labeled in the 'Sender' field as {BOT_LABEL2}. Other actors will be labeled differently (e.g., 'P1', 'B1', etc.).
     
@@ -122,7 +122,7 @@ class C(BaseConstants):
     - their sender identifer, which shows who sent the message
     - instructions for responding
     - tone to use
-    - text you will be responding to
+    - the conversation message history so far
 
     ### green bot
     IMPORTANT: This list will be the entire message history between all actors in a conversation. Messages sent by you are labeled in the 'Sender' field as {BOT_LABEL3}. Other actors will be labeled differently (e.g., 'P1', 'B1', etc.).
@@ -148,10 +148,11 @@ class MsgOutputSchema(BaseModel):
 ## when triggered, this function will run the system prompt and the user message, which will contain the entire message history, rather than building on dialogue one line at a time
 
 # bot llm function
-async def runGPT(inputMessage, tone, botLabel):
+async def runGPT(inputDat):
 
     # grab bot vars from constants
-    botLabel = botLabel
+    botLabel = inputDat['botLabel']
+    tone = inputDat['tone']
     if botLabel == C.BOT_LABEL1:
         botTemp = C.BOT_TEMP1
         botPrompt = C.SYS_RED
@@ -175,37 +176,61 @@ async def runGPT(inputMessage, tone, botLabel):
             'text': Your response to the user's message in a {tone} tone (string), 
     """
 
-    # overwrite instructions for each dictionary
-    for x in inputMessage:
-        x['instructions'] = json.dumps(instructions)
+   # add instructions to inputDat
+    inputDat['instructions'] = instructions
 
-
-    # create input message with a nested structure
-    nestedInput = [{'role': 'user', 'content': json.dumps(inputMessage)}]
-    
     # combine input message with assigned prompt
-    inputMsg = [{'role': 'system', 'content': botPrompt}] + nestedInput
+    inputMsg = [{'role': 'system', 'content': botPrompt}, {'role': 'user', 'content': json.dumps(inputDat)}]
 
     # openai client and response creation
     client = AsyncOpenAI(api_key=C.OPENAI_KEY)
-    response = await client.chat.completions.create(
-        model=C.MODEL,
-        temperature=botTemp,
-        messages=inputMsg,
-        response_format={
-            "type": "json_schema",
-            "json_schema": {
-                "name": "msg_output_schema",
-                "schema": MsgOutputSchema.model_json_schema(),
-            }
-        }
-    )
 
-    # grab text output
-    msgOutput = response.choices[0].message.content
+    # responses api with retries in case of rate limits
+    max_retries = 9
+    for attempt in range(max_retries):
+        try:
+            response = await client.responses.parse(
+                model=C.MODEL,
+                input=inputMsg,
+                text_format=MsgOutputSchema,
+            )
 
-    # return the response json
-    return msgOutput
+            # if model supports reasoning, include, otherwise dont
+            reasoning = {'effort': C.REASONING_LVL} if 'gpt-5' in C.MODEL else None
+            response.reasoning = reasoning
+
+            # if model supports temperature, include, otherwise dont
+            temperature = botTemp if 'gpt-4' in C.MODEL else None
+            response.temperature = temperature
+            return response.output_parsed
+
+        except Exception as e:
+            if attempt < max_retries - 1:
+                # exponential backoff with larger delays and jitter; honor server hint if present
+                base_delay = min(64, 2 ** (attempt + 1))
+                hinted = None
+                try:
+                    m = re.search(r"Please try again in\s+([0-9]+(?:\.[0-9]+)?)s", str(e))
+                    if m:
+                        hinted = float(m.group(1))
+                except Exception:
+                    hinted = None
+                delay = max(base_delay, hinted or 0) + random.uniform(0, 1.0)
+                botLabel = inputDat.get('botLabel', 'UNKNOWN')
+                try:
+                    print(f"[LLM][retry] runGPT for {botLabel}: {e}. Retrying in {delay:.1f}s (attempt {attempt+1}/{max_retries})")
+                except Exception:
+                    pass
+                await asyncio.sleep(delay)
+            else:
+                botLabel = inputDat.get('botLabel', 'UNKNOWN')
+                try:
+                    print(f"[LLM][error] runGPT for {botLabel}: giving up after {max_retries} attempts. Last error: {e}")
+                except Exception:
+                    pass
+                raise
+
+
 
 
 ########################################################
@@ -325,7 +350,6 @@ class MessageData(ExtraModel):
     timestamp = models.StringField()
     sender = models.StringField()
     tone = models.StringField()
-    fullText = models.StringField()
     msgText = models.StringField()
 
     # NPC target
@@ -350,7 +374,7 @@ class CharPositionData(ExtraModel):
 ########################################################
 
 # custom export of chatLog
-def custom_export(players):
+def custom_export_text(players):
     # header row
     yield [
         'sessionId', 
@@ -359,9 +383,7 @@ def custom_export(players):
         'timestamp',
         'sender',
         'tone',
-        'fullText',
         'msgText',
-        'reactionData'
     ]
 
     # get MessageData model
@@ -373,13 +395,6 @@ def custom_export(players):
         participant = player.participant
         session = player.session
 
-        # full text field
-        try:
-            fullText = json.loads(m.fullText)['content']
-        except:
-            fullText = m.fullText
-    
-
         # write to csv
         yield [
             session.code,
@@ -388,8 +403,41 @@ def custom_export(players):
             m.timestamp,
             m.sender,
             m.tone,
-            fullText,
             m.msgText,
+        ]
+
+def custom_export_positions(players):
+    # header row
+    yield [
+        'sessionId', 
+        'subjectId',
+        'msgId',
+        'timestamp',
+        'posPlayer',
+        'posRed',
+        'posBlack',
+        'posGreen',
+    ]
+
+    # get CharPositionData model
+    pData = CharPositionData.filter()
+    for p in pData:
+
+        # get player info
+        player = p.player
+        participant = player.participant
+        session = player.session
+
+        # write to csv
+        yield [
+            session.code,
+            participant.code,
+            p.msgId,
+            p.timestamp,
+            p.posPlayer,
+            p.posRed,
+            p.posBlack,
+            p.posGreen,
         ]
 
 
@@ -400,7 +448,7 @@ def custom_export(players):
 # chat page 
 class chat(Page):
     form_model = 'player'
-    timeout_seconds = 60
+    timeout_seconds = 300
 
     # vars that we will pass to chat.html
     @staticmethod
@@ -476,29 +524,25 @@ class chat(Page):
                 # create message id
                 dateNow = str(datetime.now(tz=timezone.utc).timestamp())
                 msgId = currentPlayer + '-' + dateNow
-                
-                # create message
-                msg = {'role': 'user', 'content': json.dumps({
-                    'sender': currentPlayer,
-                    'msgId': msgId,
-                    'tone': tone,
-                    'text': text,
-                })}
-                
+
                 # save to database
                 MessageData.create(
                     player=player,
-                    sender=currentPlayer,
                     msgId=msgId,
                     timestamp=dateNow,
+                    sender=currentPlayer,
                     tone=tone,
-                    fullText=json.dumps(msg),
                     msgText=text,
                     target=closestNPC,
                 )
-                
-                # append to messages
-                messages.append(msg)
+
+                # add message to list
+                messages.append({
+                    'sender': 'user',
+                    'label': currentPlayer,
+                    'msgId': msgId,
+                    'text': text,
+                })
                 
                 # update cache
                 player.cachedMessages = json.dumps(messages)
@@ -522,21 +566,27 @@ class chat(Page):
                 dateNow = str(datetime.now(tz=timezone.utc).timestamp())
 
                 if botId:
-                    botText = await runGPT(messages, tone, botId)
+
+
+
+                    # run llm on input text
+                    dateNow = str(datetime.now(tz=timezone.utc).timestamp())
+
+                    # create inputDat and run api function
+                    inputDat = dict(
+                        botLabel = botId,
+                        messages = messages,
+                        tone = tone,
+                    )
+                    botText = await runGPT(inputDat)
+
                     print('botId:', botId)
                     print('botText:', botText)
 
-                    # extract output
-                    botContent = json.loads(botText)
-                    outputText = botContent['text']
-                    botMsgId = botContent['msgId']
-                    botMsg = {'role': 'assistant', 'content': botText}
-                    
-                    # append to messages    
-                    messages.append(botMsg)
-                    
-                    # update cache
-                    player.cachedMessages = json.dumps(messages)
+                    # grab bot response data
+                    outputText = botText.text
+                    botMsgId = botText.msgId
+                    botTone = botText.tone
 
                     # save to database
                     MessageData.create(
@@ -544,21 +594,29 @@ class chat(Page):
                         sender=botId,
                         msgId=botMsgId,
                         timestamp=dateNow,
-                        tone=tone,
-                        fullText=json.dumps(botMsg),
+                        tone=botTone,
                         msgText=outputText,
-                        target=botId
                     )
 
-                    # yield data to chat.html
+                    # update cache with bot message
+                    messages.append({
+                        'sender': 'assistant',
+                        'label': botId,
+                        'msgId': botMsgId,
+                        'text': outputText,
+                    })
+                    player.cachedMessages = json.dumps(messages)
+
+                    # return output to chat.html
                     yield {player.id_in_group: dict(
                         event='botText',
-                        botMsgId=botMsgId,
-                        text=outputText,
-                        tone=tone,
                         sender=botId,
-                        phase=player.phase
+                        botMsgId=botMsgId,
+                        tone=tone,
+                        text=outputText,
+                        phase=player.phase,
                     )}
+
 
 
                 # if botId is None, then no NPC is close enough to chat
@@ -587,8 +645,6 @@ class chat(Page):
                         posGreen='',
                     )
 
-                print('posData')
-                print(posData)
                 
             # handle phase updates
             elif event == 'phase':
