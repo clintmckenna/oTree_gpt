@@ -7,9 +7,9 @@ from pydantic import BaseModel
 from datetime import datetime, timezone
 import httpx
 import base64
-from elevenlabs.client import ElevenLabs
 import boto3
 import asyncio
+import requests as _requests
 
 doc = """
 Chat with voice via Whisper API and ElevenLabs. Based on chat_complex.
@@ -198,17 +198,32 @@ async def runGPT(inputDat):
 # httpx client for whisper transcription
 HTTPX_CLIENT = httpx.AsyncClient(timeout=30)
 
-# function to get audio from elevenlabs
-elevenlabs_client = ElevenLabs(api_key=C.ELEVENLABS_KEY)
-async def runVoiceAPI(inputMessage: str, voice_id: str) -> bytes:
-    audio_iter = elevenlabs_client.text_to_speech.convert(
-        text=inputMessage,
-        voice_id=voice_id,
-        model_id="eleven_multilingual_v2",
-        output_format="mp3_44100_128",
+# function to get audio from elevenlabs via REST API
+def _call_elevenlabs(inputMessage: str, voice_id: str) -> bytes:
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+    key = C.ELEVENLABS_KEY.strip() if C.ELEVENLABS_KEY else ""
+    headers = {
+        "xi-api-key": key,
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "text": inputMessage,
+        "model_id": "eleven_multilingual_v2",
+    }
+    resp = _requests.post(
+        url,
+        headers=headers,
+        json=payload,
+        params={"output_format": "mp3_44100_128"},
+        timeout=30,
     )
-    # collect generator chunks into bytes
-    return b"".join(audio_iter)
+    if resp.status_code != 200:
+        print(f"[ElevenLabs] Error {resp.status_code}: {resp.text}")
+    resp.raise_for_status()
+    return resp.content
+
+async def runVoiceAPI(inputMessage: str, voice_id: str) -> bytes:
+    return await asyncio.to_thread(_call_elevenlabs, inputMessage, voice_id)
 
 # for further prompt formatting, check out this page:
 # https://elevenlabs.io/docs/best-practices/prompting
