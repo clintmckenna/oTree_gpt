@@ -15,6 +15,7 @@ I am continuously working on adding more templates. Here is the current list, in
 - [chat_voice](#chat_voice)
 - [dictator_game](#dictator_game)
 - [chat_multiple_agents](#chat_multiple_agents)
+- [chat_2humans1bot](#chat_2humans1bot)
 - [threejs](#threejs)
 
 I will also include applications that are submitted by the community here:
@@ -76,6 +77,10 @@ In the previous experiments, the LLM agent message is triggered when the partici
 
 <img src="./_static/multi1.png" style="display: block; width: 60%">
 <img src="./_static/multi2.png" style="display: block; width: 60%">
+
+### chat_2humans1bot
+
+Similar to chat_multiple_agents, this experiment allows for two human players with one moderator agent.
 
 ### threejs
 
